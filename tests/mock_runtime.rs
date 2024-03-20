@@ -1,43 +1,36 @@
-use std::{collections::HashMap, hash::Hash, str::FromStr};
+use std::{collections::HashMap, hash::Hash};
 
-use assembler::assemble;
+use ethereum_evm::assembler::assemble;
+use ethereum_evm::evm::{EVMContext, Message, Transaction};
+use ethereum_evm::runtime::Runtime;
+use ethereum_evm::state::memory::Memory;
+use ethereum_evm::util;
 use ethnum::U256;
-use evm::{EVMContext, Message, Transaction};
-use runtime::Runtime;
-use state::memory::Memory;
 
-pub mod assembler;
-pub mod bytecode_spec;
-pub mod evm;
-pub mod runtime;
-pub mod state;
-pub mod util;
+pub struct ContractModifications {}
 
-struct ContractModifications {}
-
-struct Contract {
-    balance: U256,
-    code_size: U256,
-    code_hash: U256,
-    code: Vec<u8>,
-    nonce: U256,
-    storage: HashMap<U256, U256>,
-    is_deleted: bool,
-    is_cold: bool,
+pub struct Contract {
+    pub balance: U256,
+    pub code_size: U256,
+    pub code_hash: U256,
+    pub code: Vec<u8>,
+    pub nonce: U256,
+    pub storage: HashMap<U256, U256>,
+    pub is_deleted: bool,
+    pub is_cold: bool,
 }
 
-struct MockRuntime {
-    block_hashes: HashMap<U256, U256>,
-    block_number: U256,
-    block_coinbase: U256,
-    block_timestamp: U256,
-    block_difficulty: U256,
-    block_randomness: U256,
-    block_gas_limit: U256,
-    block_base_fee_per_gas: U256,
-    chain_id: U256,
-
-    contracts: HashMap<U256, Contract>,
+pub struct MockRuntime {
+    pub block_hashes: HashMap<U256, U256>,
+    pub block_number: U256,
+    pub block_coinbase: U256,
+    pub block_timestamp: U256,
+    pub block_difficulty: U256,
+    pub block_randomness: U256,
+    pub block_gas_limit: U256,
+    pub block_base_fee_per_gas: U256,
+    pub chain_id: U256,
+    pub contracts: HashMap<U256, Contract>,
 }
 
 impl Runtime for MockRuntime {
@@ -135,54 +128,4 @@ impl Runtime for MockRuntime {
     fn increase_nonce(&mut self, address: U256) {
         self.contracts.get_mut(&address).unwrap().nonce += 1;
     }
-}
-
-fn main() {
-    let x  = U256::from_str("10");
-    let code1 = assemble(String::from("push_32 5 push_32 10 add push_32 10 sstore stop"));
-    println!("Code: {:?}", code1);
-    let mut contract1 = Contract {
-        balance: U256::from(10 as u64),
-        code_size: U256::from(code1.len() as u64),
-        code_hash: util::keccak256(&code1),
-        code: code1,
-        nonce: U256::from(0 as u64),
-        storage: HashMap::new(),
-        is_deleted: false,
-        is_cold: false,
-    };
-    let mut contracts: HashMap<U256, Contract> = HashMap::new();
-    contracts.insert(U256::from(1 as u64), contract1);
-    let mut mock_runtime = MockRuntime {
-        block_hashes: HashMap::new(),
-        block_number: U256::from(0 as u64),
-        block_coinbase: U256::from(0 as u64),
-        block_timestamp: U256::from(0 as u64),
-        block_difficulty: U256::from(0 as u64),
-        block_randomness: U256::from(0 as u64),
-        block_gas_limit: U256::from(100000 as u64),
-        block_base_fee_per_gas: U256::from(1 as u64),
-        chain_id: U256::from(0 as u64),
-        contracts: contracts,
-    };
-
-    let mut context = EVMContext::create_sub_context(
-        U256::from(1 as u64),
-        Message {
-            caller: U256::from(0 as u64),
-            value: U256::from(10 as u64),
-            data: Memory::new(),
-        },
-        1000,
-        mock_runtime.contracts[&U256::from(1 as u64)].code.clone(),
-        Transaction {
-            origin: U256::from(0 as u64),
-            gas_price: U256::from(1 as u64),
-        },
-        U256::from(1 as u64),
-    );
-    let result = context.execute(&mut mock_runtime);
-    assert_eq!(result, true);
-    assert_eq!(*mock_runtime.storage(U256::from(1 as u64)).get(&U256::from(10 as u64)).unwrap(), U256::from(15 as u64));
-
 }

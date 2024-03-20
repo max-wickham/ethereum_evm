@@ -1,0 +1,32 @@
+[
+    {
+        "name":"basic_test_add_1",
+        "code":"push_32 5 push_32 10 add push_32 10 sstore stop",
+        "result_address":"10",
+        "result_value":"15"
+    },
+    {
+        "name":"basic_test_add_2",
+        "code":"push_32 115792089237316195423570985008687907853269984665640564039457584007913129639935 push_32 2 add push_32 10 sstore stop",
+        "result_address":"10",
+        "result_value":"1"
+    },
+    {
+        "name":"basic_test_sub_1",
+        "code":"push_32 5 push_32 10 sub push_32 10 sstore stop",
+        "result_address":"10",
+        "result_value":"5"
+    },
+    {
+        "name":"basic_test_sub_2",
+        "code":"push_32 5 push_32 5 sub push_32 10 sstore stop",
+        "result_address":"10",
+        "result_value":"0"
+    },
+    {
+        "name":"basic_test_sub_3",
+        "code":"push_32 6 push_32 5 sub push_32 10 sstore stop",
+        "result_address":"10",
+        "result_value":"115792089237316195423570985008687907853269984665640564039457584007913129639935"
+    }
+]
