@@ -1,12 +1,10 @@
 // use crate::main;
 use crate::state::memory::Memory;
 use crate::state::stack::Stack;
-use crate::util::{self, gas_usage_change, keccak256};
+use crate::util::{self, keccak256};
 use crate::{bytecode_spec::opcodes, runtime::Runtime};
 
 use ethnum::U256;
-use std::collections::HashMap;
-use std::num::Wrapping;
 
 #[derive(Clone)]
 pub struct Transaction {
@@ -21,10 +19,9 @@ pub struct Message {
 }
 pub struct EVMContext {
     // stack_pointer: usize,
-    call_data: Memory,
     stack: Stack,
     memory: Memory,
-    // storage: &'b mut HashMap<U256, U256>,
+    // storage: &'b mut BTreeMap<U256, U256>,
     program: Memory,
     program_counter: usize,
     contract_address: U256,
@@ -49,7 +46,6 @@ impl EVMContext {
         gas_price: U256,
     ) -> EVMContext {
         EVMContext {
-            call_data: Memory::new(),
             stack: Stack::new(),
             memory: Memory::new(),
             program: Memory::from(code),
@@ -731,12 +727,10 @@ impl EVMContext {
 
             opcodes::CALL => {
                 self.make_call(runtime, false);
-                self.gas_usage += 100;
             }
 
             opcodes::CALLCODE => {
                 self.make_call(runtime, true);
-                self.gas_usage += 100;
             }
 
             opcodes::RETURN => {

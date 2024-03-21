@@ -7,6 +7,10 @@ edition = "2021"
 
 [dependencies]
 array-init = "2.1.0"
-ethnum = "1.5.0"
+ethnum = {version = "1.5.0", features = ["serde"]}
+hex = "0.4.3"
 keccak-hash = "0.10.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 test_gen = { path = "./test_gen" }
+thiserror = "1.0.58"

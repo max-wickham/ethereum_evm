@@ -50,14 +50,14 @@ pub fn generate_tests(input: TokenStream) -> TokenStream {
                         code_hash: util::keccak256(&code),
                         code: code,
                         nonce: U256::from(0 as u64),
-                        storage: HashMap::new(),
+                        storage: BTreeMap::new(),
                         is_deleted: false,
                         is_cold: false,
                     };
-                    let mut contracts: HashMap<U256, Contract> = HashMap::new();
+                    let mut contracts: BTreeMap<U256, Contract> = BTreeMap::new();
                     contracts.insert(U256::from(1 as u64), contract);
                     let mut mock_runtime = MockRuntime {
-                        block_hashes: HashMap::new(),
+                        block_hashes: BTreeMap::new(),
                         block_number: U256::from(0 as u64),
                         block_coinbase: U256::from(0 as u64),
                         block_timestamp: U256::from(0 as u64),

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, hash::Hash};
+use std::{collections::BTreeMap, hash::Hash};
 
 use ethnum::U256;
 
@@ -26,7 +26,7 @@ pub trait Runtime {
     fn code(&self, address: U256) -> Vec<u8>;
     fn exists(&self, address: U256) -> bool;
     fn nonce(&self, address: U256) -> U256;
-    fn storage(&mut self, address: U256) -> &HashMap<U256, U256>;
+    fn storage(&mut self, address: U256) -> &BTreeMap<U256, U256>;
 
     // Modify Contract State
     fn is_deleted(&self, address: U256) -> bool;
