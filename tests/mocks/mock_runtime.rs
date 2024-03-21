@@ -7,8 +7,6 @@ use ethereum_evm::state::memory::Memory;
 use ethereum_evm::util;
 use ethnum::U256;
 
-pub struct ContractModifications {}
-
 pub struct Contract {
     pub balance: U256,
     pub code_size: U256,
@@ -81,7 +79,7 @@ impl Runtime for MockRuntime {
     fn exists(&self, address: U256) -> bool {
         self.contracts.contains_key(&address)
     }
-    fn storage(&mut self, address: U256) -> &mut HashMap<U256, U256> {
+    fn storage(&mut self, address: U256) -> & HashMap<U256, U256> {
         &mut self.contracts.get_mut(&address).unwrap().storage
     }
 
@@ -89,13 +87,13 @@ impl Runtime for MockRuntime {
     fn is_deleted(&self, address: U256) -> bool {
         self.contracts[&address].is_deleted
     }
-    fn is_cold(&self, address: U256, index: Option<U256>) -> bool {
+    fn is_cold(&self, address: U256) -> bool {
         self.contracts[&address].is_cold
     }
-    fn is_hot(&self, address: U256, index: Option<U256>) -> bool {
-        !self.is_cold(address, index)
+    fn is_hot(&self, address: U256) -> bool {
+        !self.is_cold(address)
     }
-    fn mark_hot(&mut self, address: U256, index: Option<U256>) {
+    fn mark_hot(&mut self, address: U256) {
         self.contracts.get_mut(&address).unwrap().is_cold = false;
     }
     fn set_storage(&mut self, address: U256, index: U256, value: U256) {

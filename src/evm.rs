@@ -1,11 +1,9 @@
 // use crate::main;
 use crate::state::memory::Memory;
 use crate::state::stack::Stack;
-use crate::{
-    bytecode_spec::opcodes,
-    runtime::Runtime,
-    util::{self, keccak256},
-};
+use crate::util::{self, gas_usage_change, keccak256};
+use crate::{bytecode_spec::opcodes, runtime::Runtime};
+
 use ethnum::U256;
 use std::collections::HashMap;
 use std::num::Wrapping;
@@ -151,13 +149,26 @@ impl EVMContext {
             }
 
             opcodes::EXP => {
-                let (a, b) = (self.stack.pop(), self.stack.pop());
-                self.stack.push(a.pow(b.as_u32()));
-                self.gas_usage += 10;
+                let (a, exponent) = (self.stack.pop(), self.stack.pop());
+                self.stack.push(a.pow(exponent.as_u32()));
+                self.gas_usage += 10 + 50 * (util::bytes_for_u256(&exponent) as u64);
             }
 
             opcodes::SIGNEXTEND => {
-                // TODO
+                let (x, y) = (self.stack.pop(), self.stack.pop());
+                if x > 31 {
+                    self.stack.push(y);
+                } else {
+                    let t = 248 - x * 8;
+                    let sign = y & (U256::from(1 as u64) << t);
+                    if sign == 0 {
+                        let lower_mask = x << t - 1;
+                        self.stack.push(y & lower_mask);
+                    } else {
+                        let higher_mask = !(x << t - 1);
+                        self.stack.push(y | higher_mask);
+                    }
+                }
                 self.gas_usage += 5;
             }
 
@@ -245,11 +256,12 @@ impl EVMContext {
                 self.gas_usage += 3;
             }
 
-            opcodes::SHA3 => {
+            opcodes::KECCAK256 => {
                 let (offset, length) = (self.stack.pop().as_usize(), self.stack.pop().as_usize());
                 let bytes = self.memory.read_bytes(offset, length);
                 self.stack.push(keccak256(&bytes));
-                self.gas_usage += 30;
+                // As of the Ethereum Yellow Paper (EIP-62), the gas cost for the KECCAK256 instruction is 30 gas plus an additional 6 gas for each 256-bit word (or part thereof) of input data.
+                self.gas_usage += 30 + (length.div_ceil(256) as u64 * 6);
             }
 
             opcodes::ADDRESS => {
@@ -260,7 +272,8 @@ impl EVMContext {
             opcodes::BALANCE => {
                 let address = self.stack.pop();
                 self.stack.push(runtime.balance(address));
-                self.gas_usage += 100;
+                self.gas_usage += if runtime.is_hot(address) { 100 } else { 2600 };
+                runtime.mark_hot(address);
             }
 
             opcodes::ORIGIN => {
@@ -295,9 +308,12 @@ impl EVMContext {
                     self.stack.pop().as_usize(),
                     self.stack.pop().as_usize(),
                 );
+                let current_memory_usage = self.memory.memory_cost;
                 self.memory
                     .copy_from(&self.message.data, offset, dest_offset, length);
-                self.gas_usage += 3;
+                let new_usage = self.memory.memory_cost;
+                self.gas_usage +=
+                    3 + 3 * (length as u64 + 31 / 32) + (new_usage - current_memory_usage).as_u64();
             }
 
             opcodes::CODESIZE => {
@@ -311,9 +327,13 @@ impl EVMContext {
                     self.stack.pop().as_usize(),
                     self.stack.pop().as_usize(),
                 );
+
+                let current_memory_usage = self.memory.memory_cost;
                 self.memory
                     .copy_from(&self.program, offset, dest_offset, length);
-                self.gas_usage += 3;
+                let new_usage = self.memory.memory_cost;
+                self.gas_usage +=
+                    3 + 3 * (length as u64 + 31 / 32) + (new_usage - current_memory_usage).as_u64();
             }
 
             opcodes::GASPRICE => {
@@ -324,7 +344,8 @@ impl EVMContext {
             opcodes::EXTCODESIZE => {
                 let address = self.stack.pop();
                 self.stack.push(runtime.code_size(address));
-                self.gas_usage += 100;
+                self.gas_usage += if runtime.is_hot(address) { 100 } else { 2600 };
+                runtime.mark_hot(address);
             }
 
             opcodes::EXTCODECOPY => {
@@ -334,13 +355,19 @@ impl EVMContext {
                     self.stack.pop().as_usize(),
                     self.stack.pop().as_usize(),
                 );
+
+                let current_memory_usage = self.memory.memory_cost;
                 self.memory.copy_from(
                     &Memory::from(runtime.code(addr)),
                     offset,
                     dest_offset,
                     length,
                 );
-                self.gas_usage += 100;
+                let new_usage = self.memory.memory_cost;
+                self.gas_usage +=
+                    3 * (length as u64 + 31 / 32) + (new_usage - current_memory_usage).as_u64();
+                self.gas_usage += if runtime.is_hot(addr) { 100 } else { 2600 };
+                runtime.mark_hot(addr);
             }
 
             opcodes::RETURNDATASIZE => {
@@ -355,15 +382,19 @@ impl EVMContext {
                     self.stack.pop().as_usize(),
                     self.stack.pop().as_usize(),
                 );
+                let current_memory_usage = self.memory.memory_cost;
                 self.memory
                     .copy_from(&self.last_return_data, offset, dest_offset, length);
-                self.gas_usage += 3;
+                let new_usage = self.memory.memory_cost;
+                self.gas_usage +=
+                    3 + 3 * (length as u64 + 31 / 32) + (new_usage - current_memory_usage).as_u64();
             }
 
             opcodes::EXTCODEHASH => {
                 let addr = self.stack.pop();
                 self.stack.push(util::keccak256_u256(addr));
-                self.gas_usage += 100;
+                self.gas_usage += if runtime.is_hot(addr) { 100 } else { 2600 };
+                runtime.mark_hot(addr);
             }
 
             opcodes::BLOCKHASH => {
@@ -419,35 +450,50 @@ impl EVMContext {
 
             opcodes::MLOAD => {
                 let offset = self.stack.pop().as_usize();
+                let current_memory_usage = self.memory.memory_cost;
                 self.stack.push(self.memory.read(offset));
-                self.gas_usage += 3;
+                let new_usage = self.memory.memory_cost;
+                self.gas_usage += 3 + (new_usage - current_memory_usage).as_u64();
             }
 
             opcodes::MSTORE => {
                 let (offset, value) = (self.stack.pop().as_usize(), self.stack.pop());
+                let current_memory_usage = self.memory.memory_cost;
                 self.memory.write(offset, value);
-                self.gas_usage += 3;
+                let new_usage = self.memory.memory_cost;
+                self.gas_usage += 3 + (new_usage - current_memory_usage).as_u64();
             }
 
             opcodes::MSTORE8 => {
                 let (offset, value) = (self.stack.pop().as_usize(), self.stack.pop());
+                let current_memory_usage = self.memory.memory_cost;
                 self.memory.write_u8(offset, (value & 0xFF).as_u8());
+                let new_usage = self.memory.memory_cost;
+                self.gas_usage += 3 + (new_usage - current_memory_usage).as_u64();
             }
 
             opcodes::SLOAD => {
                 let key = self.stack.pop();
                 self.stack
                     .push(runtime.storage(self.contract_address)[&key]);
-                self.gas_usage += 100;
+                self.gas_usage += if runtime.is_hot(self.contract_address) {
+                    100
+                } else {
+                    2600
+                };
+                runtime.mark_hot(self.contract_address);
             }
 
             opcodes::SSTORE => {
                 let (key, value) = (self.stack.pop(), self.stack.pop());
                 // self.storage.insert(key, value);
                 runtime.set_storage(self.contract_address, key, value);
-                self.gas_usage += 100;
-                println!("sstore");
-                println!("{}, {}", key, value);
+                self.gas_usage += if runtime.is_hot(self.contract_address) {
+                    100
+                } else {
+                    2600
+                };
+                runtime.mark_hot(self.contract_address);
             }
 
             opcodes::JUMP => {
@@ -716,8 +762,15 @@ impl EVMContext {
         }
 
         self.program_counter += 1;
-
+        if !self.check_gas_usage() {
+            return false;
+        }
         return true;
+    }
+
+    #[inline]
+    fn check_gas_usage(&self) -> bool {
+        self.gas_usage > self.gas_input
     }
 
     // #[inline]
@@ -756,8 +809,8 @@ impl EVMContext {
 
     #[inline]
     fn make_call(&mut self, runtime: &mut impl Runtime, maintain_storage: bool) -> bool {
-        let (gas, address, value, argsOffset, argsSize, retOffset, retSize) = (
-            self.stack.pop(),
+        let (mut gas, address, value, args_offset, args_size, ret_offset, ret_size) = (
+            self.stack.pop().as_u64(),
             self.stack.pop(),
             self.stack.pop(),
             self.stack.pop().as_usize(),
@@ -766,6 +819,13 @@ impl EVMContext {
             self.stack.pop().as_usize(),
         );
         let code: Vec<u8> = runtime.code(address);
+
+        if value != 0 {
+            gas += 2300;
+        }
+        if gas > (self.gas_input - self.gas_usage) * 63 / 64 {
+            gas = (self.gas_input - self.gas_usage) * 63 / 64;
+        }
         // TODO check gas is okay
         let mut sub_evm = EVMContext::create_sub_context(
             address,
@@ -773,21 +833,47 @@ impl EVMContext {
                 caller: self.contract_address,
                 data: {
                     let mut memory = Memory::new();
-                    memory.copy_from(&self.memory, argsOffset, 0, argsSize);
+                    memory.copy_from(&self.memory, args_offset, 0, args_size);
                     memory
                 },
                 value: value,
             },
-            gas.as_u64(),
+            gas,
             code,
             self.transaction.clone(),
             self.gas_price,
         );
         let response = sub_evm.execute(runtime);
         self.last_return_data = sub_evm.result;
+        let current_memory_cost = self.memory.memory_cost;
         self.memory
-            .copy_from(&self.last_return_data, 0, retOffset, retSize);
+            .copy_from(&self.last_return_data, 0, ret_offset, ret_size);
+        let new_memory_cost = self.memory.memory_cost;
         self.stack.push(U256::from(response));
+
+        let memory_expansion_cost = (new_memory_cost - current_memory_cost).as_u64();
+        let code_execution_cost = sub_evm.gas_usage;
+        let address_access_cost = if runtime.is_hot(address) {
+            100
+        } else {
+            runtime.mark_hot(address);
+            2600
+        };
+        let positive_value_cost = if value != 0 { 6700 } else { 0 };
+        let value_to_empty_account_cost = if value != 0
+            && runtime.nonce(address) == 0
+            && runtime.code_size(address) == 0
+            && runtime.balance(address) == 0
+        {
+            25000
+        } else {
+            0
+        };
+        self.gas_usage += memory_expansion_cost
+            + code_execution_cost
+            + address_access_cost
+            + positive_value_cost
+            + value_to_empty_account_cost;
         response
     }
 }

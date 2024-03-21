@@ -28,7 +28,7 @@ pub mod opcodes {
     pub const SHR: u8 = 0x1C;
     pub const SAR: u8 = 0x1D;
 
-    pub const SHA3: u8 = 0x20;
+    pub const KECCAK256: u8 = 0x20;
 
     pub const ADDRESS: u8 = 0x30;
     pub const BALANCE: u8 = 0x31;

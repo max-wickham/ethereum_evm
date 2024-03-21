@@ -26,15 +26,15 @@ pub trait Runtime {
     fn code(&self, address: U256) -> Vec<u8>;
     fn exists(&self, address: U256) -> bool;
     fn nonce(&self, address: U256) -> U256;
-    fn storage(&mut self, address: U256) -> &mut HashMap<U256, U256>;
+    fn storage(&mut self, address: U256) -> &HashMap<U256, U256>;
 
     // Modify Contract State
     fn is_deleted(&self, address: U256) -> bool;
-    fn is_cold(&self, address: U256, index: Option<U256>) -> bool;
-    fn is_hot(&self, address: U256, index: Option<U256>) -> bool {
-        !self.is_cold(address, index)
+    fn is_cold(&self, address: U256) -> bool;
+    fn is_hot(&self, address: U256) -> bool {
+        !self.is_cold(address)
     }
-    fn mark_hot(&mut self, address: U256, index: Option<U256>);
+    fn mark_hot(&mut self, address: U256);
     fn set_storage(&mut self, address: U256, index: U256, value: U256);
     fn mark_delete(&mut self, address: U256);
     fn reset_storage(&mut self, address: U256);

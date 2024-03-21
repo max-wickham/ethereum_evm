@@ -46,7 +46,6 @@ impl Memory {
         if write_address > self.max_index {
             self.expand(write_address)
         }
-        // self.data.[write_address: write_address + length] = memory.data.[write_address: write_address + length]
         self.bytes[write_address..write_address + length]
             .copy_from_slice(&memory.bytes[read_address..read_address + length]);
     }
@@ -104,3 +103,5 @@ impl Index<usize> for Memory {
         &self.bytes[s]
     }
 }
+
+// TODO tests

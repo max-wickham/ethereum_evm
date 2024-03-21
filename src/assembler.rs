@@ -15,8 +15,11 @@ pub fn assemble(code: String) -> Vec<u8> {
     let mut index = 0;
     let num_words = words.len();
     while index < num_words {
-        let word = words.get(index).unwrap().to_uppercase();
+        let mut word = words.get(index).unwrap().to_uppercase();
         println!("{}",word);
+        if word == "PUSH" {
+            word = String::from("PUSH_32");
+        }
         let mut bytes: Vec<u8> = match word.as_str() {
             "STOP" => {
                 vec![0x00]
@@ -96,7 +99,7 @@ pub fn assemble(code: String) -> Vec<u8> {
             "SAR" => {
                 vec![0x1D]
             }
-            "SHA3" => {
+            "KECCAK256" => {
                 vec![0x20]
             }
             "ADDRESS" => {

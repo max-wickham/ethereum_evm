@@ -1,0 +1,53 @@
+[
+    {
+        "name":"basic_test_add_1",
+        "code":"push 5 push 10 add push 10 sstore stop",
+        "result_address":"10",
+        "result_value":"15"
+    },
+    {
+        "name":"basic_test_add_2",
+        "code":"push 115792089237316195423570985008687907853269984665640564039457584007913129639935 push 2 add push 10 sstore stop",
+        "result_address":"10",
+        "result_value":"1",
+        "comments":"tests wrap around"
+    },
+    {
+        "name":"basic_test_sub_1",
+        "code":"push 5 push 10 sub push 10 sstore stop",
+        "result_address":"10",
+        "result_value":"5"
+    },
+    {
+        "name":"basic_test_sub_2",
+        "code":"push 5 push 5 sub push 10 sstore stop",
+        "result_address":"10",
+        "result_value":"0"
+    },
+    {
+        "name":"basic_test_sub_3",
+        "code":"push 6 push 5 sub push 10 sstore stop",
+        "result_address":"10",
+        "result_value":"115792089237316195423570985008687907853269984665640564039457584007913129639935",
+        "comments":"tests wrap around"
+    },
+    {
+        "name":"basic_mult_1",
+        "code":"push 2 push 3 mul push 10 sstore stop",
+        "result_address":"10",
+        "result_value":"6"
+    },
+    {
+        "name":"basic_div_1",
+        "code":"push 3 push 13 div push 10 sstore stop",
+        "result_address":"10",
+        "result_value":"4"
+    },
+    {
+        "name":"basic_storage",
+        "code":"push 5 push 15 sstore push 6 push 15 sload add push 12 sstore stop",
+        "result_address":"12",
+        "result_value":"11",
+        "comments":"tests that the load and store operations both function as expected"
+    }
+]
