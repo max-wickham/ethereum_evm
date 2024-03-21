@@ -26,7 +26,7 @@ impl Stack {
         let len = bytes.len();
         self.data[self.stack_pointer..self.stack_pointer + len].copy_from_slice(&bytes);
         self.stack_pointer += len;
-        println!("Pushed {:?}", bytes);
+        // println!("Pushed {:?}", bytes);
     }
 
     #[inline]

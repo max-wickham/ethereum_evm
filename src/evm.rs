@@ -476,24 +476,24 @@ impl EVMContext {
                 let key = self.stack.pop();
                 self.stack
                     .push(runtime.storage(self.contract_address)[&key]);
-                self.gas_usage += if runtime.is_hot(self.contract_address) {
-                    100
-                } else {
-                    2600
-                };
-                runtime.mark_hot(self.contract_address);
+                // self.gas_usage += if runtime.is_hot(self.contract_address) {
+                //     100
+                // } else {
+                //     2600
+                // };
+                // runtime.mark_hot(self.contract_address);
             }
 
             opcodes::SSTORE => {
                 let (key, value) = (self.stack.pop(), self.stack.pop());
                 // self.storage.insert(key, value);
                 runtime.set_storage(self.contract_address, key, value);
-                self.gas_usage += if runtime.is_hot(self.contract_address) {
-                    100
-                } else {
-                    2600
-                };
-                runtime.mark_hot(self.contract_address);
+                // self.gas_usage += if runtime.is_hot(self.contract_address) {
+                //     100
+                // } else {
+                //     2600
+                // };
+                // runtime.mark_hot(self.contract_address);
             }
 
             opcodes::JUMP => {
@@ -762,7 +762,7 @@ impl EVMContext {
         }
 
         self.program_counter += 1;
-        if !self.check_gas_usage() {
+        if self.check_gas_usage() {
             return false;
         }
         return true;
