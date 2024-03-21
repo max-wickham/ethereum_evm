@@ -1,4 +1,4 @@
-use std::{collections::HashMap, hash::Hash, str::FromStr};
+use std::{collections::BTreeMap, hash::Hash, str::FromStr};
 
 use assembler::assemble;
 use ethnum::U256;
@@ -21,13 +21,13 @@ struct Contract {
     code_hash: U256,
     code: Vec<u8>,
     nonce: U256,
-    storage: HashMap<U256, U256>,
+    storage: BTreeMap<U256, U256>,
     is_deleted: bool,
     is_cold: bool,
 }
 
 struct MockRuntime {
-    block_hashes: HashMap<U256, U256>,
+    block_hashes: BTreeMap<U256, U256>,
     block_number: U256,
     block_coinbase: U256,
     block_timestamp: U256,
@@ -37,7 +37,7 @@ struct MockRuntime {
     block_base_fee_per_gas: U256,
     chain_id: U256,
 
-    contracts: HashMap<U256, Contract>,
+    contracts: BTreeMap<U256, Contract>,
 }
 
 impl Runtime for MockRuntime {
@@ -88,7 +88,7 @@ impl Runtime for MockRuntime {
     fn exists(&self, address: U256) -> bool {
         self.contracts.contains_key(&address)
     }
-    fn storage(&mut self, address: U256) -> & HashMap<U256, U256> {
+    fn storage(&mut self, address: U256) -> & BTreeMap<U256, U256> {
         &mut self.contracts.get_mut(&address).unwrap().storage
     }
 
@@ -116,7 +116,7 @@ impl Runtime for MockRuntime {
         self.contracts.get_mut(&address).unwrap().is_deleted = true;
     }
     fn reset_storage(&mut self, address: U256) {
-        self.contracts.get_mut(&address).unwrap().storage = HashMap::new();
+        self.contracts.get_mut(&address).unwrap().storage = BTreeMap::new();
     }
     fn set_code(&mut self, address: U256, code: Vec<u8>) {
         self.contracts.get_mut(&address).unwrap().code = code;
@@ -147,14 +147,14 @@ fn main() {
         code_hash: util::keccak256(&code1),
         code: code1,
         nonce: U256::from(0 as u64),
-        storage: HashMap::new(),
+        storage: BTreeMap::new(),
         is_deleted: false,
         is_cold: false,
     };
-    let mut contracts: HashMap<U256, Contract> = HashMap::new();
+    let mut contracts: BTreeMap<U256, Contract> = BTreeMap::new();
     contracts.insert(U256::from(1 as u64), contract1);
     let mut mock_runtime = MockRuntime {
-        block_hashes: HashMap::new(),
+        block_hashes: BTreeMap::new(),
         block_number: U256::from(0 as u64),
         block_coinbase: U256::from(0 as u64),
         block_timestamp: U256::from(0 as u64),

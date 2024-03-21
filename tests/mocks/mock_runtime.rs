@@ -1,4 +1,4 @@
-use std::{collections::HashMap, hash::Hash};
+use std::{collections::BTreeMap, hash::Hash};
 
 use ethereum_evm::assembler::assemble;
 use ethereum_evm::evm::{EVMContext, Message, Transaction};
@@ -13,13 +13,13 @@ pub struct Contract {
     pub code_hash: U256,
     pub code: Vec<u8>,
     pub nonce: U256,
-    pub storage: HashMap<U256, U256>,
+    pub storage: BTreeMap<U256, U256>,
     pub is_deleted: bool,
     pub is_cold: bool,
 }
 
 pub struct MockRuntime {
-    pub block_hashes: HashMap<U256, U256>,
+    pub block_hashes: BTreeMap<U256, U256>,
     pub block_number: U256,
     pub block_coinbase: U256,
     pub block_timestamp: U256,
@@ -28,7 +28,7 @@ pub struct MockRuntime {
     pub block_gas_limit: U256,
     pub block_base_fee_per_gas: U256,
     pub chain_id: U256,
-    pub contracts: HashMap<U256, Contract>,
+    pub contracts: BTreeMap<U256, Contract>,
 }
 
 impl Runtime for MockRuntime {
@@ -79,7 +79,7 @@ impl Runtime for MockRuntime {
     fn exists(&self, address: U256) -> bool {
         self.contracts.contains_key(&address)
     }
-    fn storage(&mut self, address: U256) -> & HashMap<U256, U256> {
+    fn storage(&mut self, address: U256) -> & BTreeMap<U256, U256> {
         &mut self.contracts.get_mut(&address).unwrap().storage
     }
 
@@ -107,7 +107,7 @@ impl Runtime for MockRuntime {
         self.contracts.get_mut(&address).unwrap().is_deleted = true;
     }
     fn reset_storage(&mut self, address: U256) {
-        self.contracts.get_mut(&address).unwrap().storage = HashMap::new();
+        self.contracts.get_mut(&address).unwrap().storage = BTreeMap::new();
     }
     fn set_code(&mut self, address: U256, code: Vec<u8>) {
         self.contracts.get_mut(&address).unwrap().code = code;
