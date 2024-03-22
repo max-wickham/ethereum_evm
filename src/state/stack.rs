@@ -23,17 +23,26 @@ impl Stack {
 
     #[inline]
     pub fn push_bytes(&mut self, bytes: &Vec<u8>) {
+        let mut padded_vec = vec![0; 32 - bytes.len()];
+        let padded_vec = if bytes.len() < 32 {
+            padded_vec.append(&mut bytes.clone());
+            &padded_vec
+        }else {
+            bytes
+        };
+        let item = U256::from_be_bytes(padded_vec.as_slice().try_into().unwrap());
+        let bytes = item.to_be_bytes();
         let len = bytes.len();
         self.data[self.stack_pointer..self.stack_pointer + len].copy_from_slice(&bytes);
         self.stack_pointer += len;
-        // println!("Pushed {:?}", bytes);
+        // println!("Pushed {:?}", U256::from_be_bytes(bytes));
     }
 
     #[inline]
     pub fn pop(&mut self) -> U256 {
         let u256_from_bytes = U256::from_be_bytes(self.data[self.stack_pointer-32..self.stack_pointer].try_into().unwrap());
         self.stack_pointer -= 32;
-        println!("Popped {:?}", u256_from_bytes);
+        // println!("Popped {:?}", u256_from_bytes);
         u256_from_bytes
     }
 

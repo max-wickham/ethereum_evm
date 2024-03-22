@@ -53,6 +53,7 @@ pub fn generate_tests(input: TokenStream) -> TokenStream {
                         storage: BTreeMap::new(),
                         is_deleted: false,
                         is_cold: false,
+                        hot_keys: HashSet::new(),
                     };
                     let mut contracts: BTreeMap<U256, Contract> = BTreeMap::new();
                     contracts.insert(U256::from(1 as u64), contract);

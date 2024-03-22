@@ -3,7 +3,7 @@ use std::ops::Index;
 use ethnum::U256;
 
 pub struct Memory {
-    bytes: Vec<u8>,
+    pub bytes: Vec<u8>,
     pub max_index: usize,
     pub memory_cost: U256,
 }
@@ -89,9 +89,19 @@ impl Memory {
     #[inline]
     fn expand(&mut self, new_max_address: usize) {
         self.max_index = new_max_address;
+        self.bytes.resize(new_max_address + 1, 0);
         let memory_size_word = (self.max_index / 4) as u64;
         self.memory_cost =
             U256::from((u64::pow(memory_size_word, 2) / 512 + (3 * memory_size_word)) as u64);
+    }
+
+    #[inline]
+    fn compute_memory_cost(&mut self) -> usize {
+        self.max_index = self.bytes.len() - 1;
+        let memory_size_word = (self.max_index / 4) as u64;
+        self.memory_cost =
+            U256::from((u64::pow(memory_size_word, 2) / 512 + (3 * memory_size_word)) as u64);
+        self.memory_cost.as_usize()
     }
 }
 
