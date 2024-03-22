@@ -31,10 +31,15 @@ pub trait Runtime {
     // Modify Contract State
     fn is_deleted(&self, address: U256) -> bool;
     fn is_cold(&self, address: U256) -> bool;
+    fn is_cold_index(&self, address: U256, index: U256) -> bool;
     fn is_hot(&self, address: U256) -> bool {
         !self.is_cold(address)
     }
+    fn is_hot_index(&self, address: U256, index: U256) -> bool {
+        !self.is_cold_index(address, index)
+    }
     fn mark_hot(&mut self, address: U256);
+    fn mark_hot_index(&mut self, address: U256, index: U256);
     fn set_storage(&mut self, address: U256, index: U256, value: U256);
     fn mark_delete(&mut self, address: U256);
     fn reset_storage(&mut self, address: U256);
