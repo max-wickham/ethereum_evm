@@ -1,6 +1,8 @@
 use std::ops::Index;
 
-use ethnum::U256;
+use primitive_types::U256;
+
+use crate::util::u256_to_array;
 
 pub struct Memory {
     pub bytes: Vec<u8>,
@@ -60,7 +62,7 @@ impl Memory {
         let bytes_to_copy = &self.bytes[address..address + 32];
         let mut bytes = [0; 32];
         bytes.copy_from_slice(bytes_to_copy);
-        U256::from_be_bytes(bytes)
+        U256::from(bytes)
     }
 
     #[inline]
@@ -70,7 +72,7 @@ impl Memory {
         }
         let index = address;
         let end_index = index + 32;
-        self.bytes[index..end_index].copy_from_slice(&value.to_be_bytes().to_vec());
+        self.bytes[index..end_index].copy_from_slice(&u256_to_array(value).to_vec());
     }
 
     #[inline]
@@ -89,7 +91,7 @@ impl Memory {
     #[inline]
     fn expand(&mut self, new_max_address: usize) {
         self.max_index = new_max_address;
-        self.bytes.resize(new_max_address + 1, 0);
+        self.bytes.resize(new_max_address, 0);
         let memory_size_word = (self.max_index / 4) as u64;
         self.memory_cost =
             U256::from((u64::pow(memory_size_word, 2) / 512 + (3 * memory_size_word)) as u64);
@@ -114,4 +116,6 @@ impl Index<usize> for Memory {
     }
 }
 
-// TODO tests
+// // TODO tests
+// 838137708090664833
+// 838137708090664833

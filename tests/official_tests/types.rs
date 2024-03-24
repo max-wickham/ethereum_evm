@@ -1,4 +1,4 @@
-use ethnum::U256;
+use primitive_types::{H256, U256};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 
@@ -95,7 +95,7 @@ pub struct TestEnv {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TestPost {
-    pub hash: U256,
+    pub hash: H256,
     pub indexes: TestPostIndexes,
     pub logs: U256,
     #[serde(rename = "txbytes")]
@@ -116,7 +116,7 @@ pub struct TestContract {
     pub balance: U256,
     pub code: Hex,
     pub nonce: U256,
-    pub storage: BTreeMap<U256, U256>,
+    pub storage: BTreeMap<H256, H256>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]

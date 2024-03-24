@@ -1,5 +1,4 @@
 use ethereum_evm::runtime::Runtime;
-use ethnum::U256;
 use hex::FromHex;
 use serde::{
     de::{Error, Visitor},

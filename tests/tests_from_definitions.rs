@@ -1,7 +1,6 @@
 mod mocks;
 use std::{collections::BTreeMap, str::FromStr, collections::HashSet};
-use ethereum_evm::{assembler::assemble, evm::{EVMContext, Message, Transaction}, runtime::Runtime, state::memory::Memory, util};
-use ethnum::U256;
+// use ethereum_evm::{assembler::assemble, evm::{EVMContext, Message, Transaction}, runtime::Runtime, state::memory::Memory, util};
 use mocks::mock_runtime::{Contract, MockRuntime};
 use test_gen::generate_tests;
 mod official_tests;
