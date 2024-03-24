@@ -5,12 +5,13 @@ use crate::runtime;
 // use crate::main;
 use crate::state::memory::Memory;
 use crate::state::stack::Stack;
-use crate::util::{self, h256_to_u256, int256_to_uint256, keccak256, u256_to_array, u256_to_h256, u256_to_uint256, uint256_to_int256};
+use crate::util::{
+    self, h256_to_u256, int256_to_uint256, keccak256, u256_to_array, u256_to_h256, u256_to_uint256, uint256_to_int256, MAX_UINT256, MAX_UINT256_COMPLEMENT, ZERO
+};
 use crate::{bytecode_spec::opcodes, runtime::Runtime};
 use num256::{Int256, Uint256};
 use paste::paste;
 use primitive_types::U256;
-const ZERO: U256 = U256::zero();
 #[derive(Clone)]
 struct Transaction {
     pub origin: U256,
@@ -225,11 +226,20 @@ impl EVMContext {
                         self.stack.push(U256::zero());
                     },
                     _ => {
-                        let a : Int256 = Uint256::from(TryInto::<[u8;32]>::try_into(u256_to_array(a)).unwrap()).try_into().unwrap();
-                        let b : Int256 = Uint256::from(TryInto::<[u8;32]>::try_into(u256_to_array(b)).unwrap()).try_into().unwrap();
-                        let result: Uint256 = int256_to_uint256(a / b);
-                        let result = U256::from(result.to_be_bytes());
-                        self.stack.push(result);
+                        let a  = u256_to_uint256(a);
+                        let b  = u256_to_uint256(b);
+                        // Handle overflow case of -1 * MAX_POSITIVE
+                        if a == *MAX_UINT256_COMPLEMENT && b == *MAX_UINT256 {
+                            self.stack.push(U256::from(MAX_UINT256_COMPLEMENT.to_be_bytes()));
+                        }
+                        else {
+                            let a = uint256_to_int256(a);
+                            let b = uint256_to_int256(b);
+                            let result: Uint256 = int256_to_uint256(a / b);
+                            let result = U256::from(result.to_be_bytes());
+                            self.stack.push(result);
+                        }
+
                     }
                 }
                 self.gas_usage += 5;
@@ -257,8 +267,7 @@ impl EVMContext {
                     _ => {
                         let a = uint256_to_int256(u256_to_uint256(a));
                         let b = uint256_to_int256(u256_to_uint256(b));
-                        println!("a: {}, b: {}, {}", a, b, (a.rem(b) + b).rem(b));
-                        let result: Uint256 = int256_to_uint256((a.rem(b) + b).rem(b));
+                        let result: Uint256 = int256_to_uint256(a.rem(b));
                         let result = U256::from(result.to_be_bytes());
                         self.stack.push(result);
                     }
@@ -302,16 +311,20 @@ impl EVMContext {
 
             opcodes::SIGNEXTEND => {
                 let (x, y) = (self.stack.pop(), self.stack.pop());
+                // X is the number of bytes of the input lower_mask
                 if x > U256::from(31) {
                     self.stack.push(y);
                 } else {
-                    let t = U256::from(248) - x * 8;
-                    let sign = y & (U256::from(1 as u64) << t);
-                    if sign == U256::zero() {
-                        let lower_mask = x << t - 1;
+                    let sign = y >> (x*8 + 7) & U256::from(1 as u64);
+                    let lower_mask = if x == U256::from(31) {
+                        U256::max_value()
+                    } else {
+                        (U256::from(1) << ((x+1)*8)) - 1
+                    };
+                    if sign == ZERO {
                         self.stack.push(y & lower_mask);
                     } else {
-                        let higher_mask = !(x << t - 1);
+                        let higher_mask = !lower_mask;
                         self.stack.push(y | higher_mask);
                     }
                 }
@@ -332,14 +345,18 @@ impl EVMContext {
 
             opcodes::SLT => {
                 let (a, b) = (self.stack.pop(), self.stack.pop());
-                self.stack.push(U256::from(((a.as_u64() as i64) < (b.as_u64() as i64)) as u64));
+                let a = uint256_to_int256(u256_to_uint256(a));
+                let b = uint256_to_int256(u256_to_uint256(b));
+                self.stack.push(U256::from((a < b) as u64));
                 self.gas_usage += 3;
             },
 
             opcodes::SGT => {
                 // debug!("SGT");
                 let (a, b) = (self.stack.pop(), self.stack.pop());
-                self.stack.push(U256::from(((a.as_u64() as i64) > (b.as_u64() as i64)) as u64));
+                let a = uint256_to_int256(u256_to_uint256(a));
+                let b = uint256_to_int256(u256_to_uint256(b));
+                self.stack.push(U256::from((a > b) as u64));
                 self.gas_usage += 3;
             },
 
@@ -382,19 +399,32 @@ impl EVMContext {
 
             opcodes::BYTE => {
                 let (i, x) = (self.stack.pop(), self.stack.pop());
+                println!("i: {}, x: {}", i, x);
+                if i > U256::from(31) {
+                    self.stack.push(U256::zero());
+                } else {
                 self.stack.push((x >> (U256::from(248) - i * 8)) & (0xFF as u64).into());
+                }
                 self.gas_usage += 3;
             },
 
             opcodes::SHL => {
                 let (shift, value) = (self.stack.pop(), self.stack.pop());
-                self.stack.push(value << shift);
+                if shift > 31.into() {
+                    self.stack.push(U256::zero());
+                } else {
+                    self.stack.push(value << shift);
+                }
                 self.gas_usage += 3;
             },
 
             opcodes::SHR => {
                 let (shift, value) = (self.stack.pop(), self.stack.pop());
-                self.stack.push(value >> shift);
+                if shift > 31.into() {
+                    self.stack.push(U256::zero());
+                } else {
+                    self.stack.push(value >> shift);
+                }
                 self.gas_usage += 3;
             },
 
@@ -642,15 +672,16 @@ impl EVMContext {
 
             opcodes::SSTORE => {
                 let (key, value) = (self.stack.pop(), self.stack.pop());
-                if runtime.is_hot_index(self.contract_address, key){
-                } else {
+                println!("key value {}, {}", key, value);
+                if !runtime.is_hot_index(self.contract_address, key){
                     self.gas_usage += 2100;
                     runtime.mark_hot_index(self.contract_address, key);
                 }
                 let base_dynamic_gas;
                 if !runtime.storage(self.contract_address).contains_key(&u256_to_h256(key)) && value.eq(&U256::zero())  {
+                    println!("This case");
                             base_dynamic_gas = 100;
-
+                    // runtime.set_storage(self.contract_address, key, u256_to_h256(value));
                 }
                 else {
                     base_dynamic_gas = if (runtime.storage(self.contract_address).contains_key(&u256_to_h256(key))

@@ -18,3 +18,4 @@ sha3 = "0.10.8"
 test_gen = { path = "./test_gen" }
 thiserror = "1.0.58"
 num256 = "0.5.1"
+lazy_static = "1.4.0"

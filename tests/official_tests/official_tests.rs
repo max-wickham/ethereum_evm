@@ -117,14 +117,14 @@ pub fn run_test(test: &TestState, debug: bool) {
     assert_eq!(runtime.state_root_hash(), test.post.hash);
 }
 
-generate_official_tests_from_folder!(
-    "./tests/official_tests/tests/GeneralStateTests/VMTests/vmArithmeticTest"
-);
+// generate_official_tests_from_folder!(
+//     "./tests/official_tests/tests/GeneralStateTests/VMTests/vmArithmeticTest"
+// );
 
 // generate_official_tests_from_folder!(
 //     "./tests/official_tests/tests/GeneralStateTests/stRandom"
 // );
 
-// generate_official_tests_from_file!(
-//     "./tests/official_tests/tests/GeneralStateTests/VMTests/vmArithmeticTest/arith.json"
-// );
+generate_official_tests_from_file!(
+    "./tests/official_tests/tests/GeneralStateTests/VMTests/vmArithmeticTest/fib.json"
+);
