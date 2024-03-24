@@ -1,3 +1,6 @@
+use std::{ops::Not, str::FromStr};
+
+use num256::{Int256, Uint256};
 use primitive_types::{H256,U256};
 use sha3::{Digest, Keccak256};
 
@@ -42,6 +45,38 @@ pub fn u256_to_array(v: U256) -> [u8; 32] {
     x
 }
 
+pub fn u256_to_uint256(v: U256) -> Uint256 {
+    Uint256::from(TryInto::<[u8;32]>::try_into(u256_to_array(v)).unwrap()).try_into().unwrap()
+}
+
+pub fn uint256_to_int256(v: Uint256) -> Int256 {
+    if v > Uint256::from_str("57896044618658097711785492504343953926634992332820282019728792003956564819967").unwrap() {
+        let mut twos_complement = v.to_be_bytes();
+        for elem in twos_complement.iter_mut() {
+            *elem = !*elem;
+        }
+        let twos_complement = Uint256::from(twos_complement) + Uint256::from(1 as u64);
+
+        twos_complement.to_int256().unwrap() * Int256::from(-1)
+    } else {
+        v.to_int256().unwrap()
+    }
+}
+
+pub fn int256_to_uint256(v: Int256) -> Uint256 {
+    if v < Int256::from(0 as i64) {
+        let twos_complement = v * Int256::from(-1);
+        let twos_complement = twos_complement.to_uint256().unwrap();
+        let mut twos_complement = twos_complement.to_be_bytes();
+        for elem in twos_complement.iter_mut() {
+            *elem = !*elem;
+        }
+        let twos_complement = Uint256::from(twos_complement) + Uint256::from(1 as u64);
+        twos_complement
+    } else {
+        v.to_uint256().unwrap()
+    }
+}
 
 
 #[macro_export]

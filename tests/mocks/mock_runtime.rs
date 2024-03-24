@@ -1,13 +1,10 @@
-use ethereum_evm::assembler::assemble;
-use ethereum_evm::evm::EVMContext;
 use ethereum_evm::runtime::Runtime;
-use ethereum_evm::state::memory::Memory;
-use ethereum_evm::util::{self, h256_to_u256, keccak256, u256_to_array, u256_to_h256};
+use ethereum_evm::util::{h256_to_u256, keccak256, u256_to_h256};
 use hex::encode;
 use primitive_types::{H160, H256, U256};
 use rlp::{Encodable, RlpStream};
 use std::collections::HashSet;
-use std::{collections::BTreeMap, hash::Hash};
+use std::collections::BTreeMap;
 pub struct Contract {
     pub balance: U256,
     pub code_size: U256,
@@ -54,6 +51,7 @@ impl Encodable for RLPContract {
                 s.begin_list(5);
             }
         }
+        // TODO: debugging
         println!("nonce: {:x?}", self.nonce);
         println!("balance: {:x?}", self.balance);
         println!("storage_root_hash: {:x?}", self.storage_root_hash);
@@ -75,8 +73,9 @@ impl MockRuntime {
                 .iter()
                 .map(|(address, contract)| {
                     (H160::from(u256_to_h256(*address)), {
+                        println!("");
                         println!("address: {:x}", address);
-                        println!("contract: {:?}", contract.active_storage);
+                        println!("storage: {:?}", contract.active_storage);
                         let encoded_contract = rlp::encode(&RLPContract {
                             storage_root_hash:
                                 ethereum::util::sec_trie_root(
@@ -90,14 +89,14 @@ impl MockRuntime {
                             balance: contract.balance,
                             code_version: U256::zero(),
                         });
-                        println!("encoded_contract: {:x?}", encode(keccak256(&encoded_contract.to_vec())));
+                        // println!("encoded_contract: {:x?}", encode(keccak256(&encoded_contract.to_vec())));
                         encoded_contract
                     })
                 })
                 .collect::<Vec<_>>();
-            println!("tree: {:x?}", &tree);
+            // println!("tree: {:x?}", &tree);
             let x = ethereum::util::sec_trie_root(tree);
-            println!("state_root_hash: {:x?}", x);
+            // println!("state_root_hash: {:x?}", x);
             x
 
     }

@@ -1,24 +1,19 @@
 use ethereum_evm::{
     evm::EVMContext,
     runtime::Runtime,
-    state::memory::Memory,
     util::{keccak256, u256_to_h256},
 };
 use primitive_types::U256;
 use std::{
     collections::{BTreeMap, HashSet},
     fs::File,
-    hash::Hash,
     io::BufReader,
 };
-use test_gen::generate_official_tests_from_folder;
+use test_gen::{generate_official_tests_from_file, generate_official_tests_from_folder};
 
 use crate::mocks::mock_runtime::{Contract, MockRuntime};
 
-use super::{
-    error::{self, Error},
-    types::{TestState, TestStateMulti},
-};
+use super::types::{TestState, TestStateMulti};
 
 pub fn run_test_file(filename: String, debug: bool, index: usize) {
     let tests: BTreeMap<String, TestStateMulti> =
@@ -96,14 +91,16 @@ pub fn run_test(test: &TestState, debug: bool) {
         test.transaction.gas_price.unwrap_or_default(),
         test.transaction.value,
         test.transaction.data,
-        true,
+        debug,
     );
 
     // Calculate the gas usage
     let eth_usage = (gas_usage) * test.transaction.gas_price.unwrap_or_default().as_usize();
-    println!("Gas Usage: {}", gas_usage);
-    println!("Eth Usage: {}", eth_usage);
-    println!("Value: {}", test.transaction.value);
+    if debug {
+        println!("Gas Usage: {}", gas_usage);
+        println!("Eth Usage: {}", eth_usage);
+        println!("Value: {}", test.transaction.value);
+    }
     // send value the wallet
     runtime
         .contracts
@@ -118,10 +115,16 @@ pub fn run_test(test: &TestState, debug: bool) {
     runtime.deposit(test.env.current_coinbase, U256::from(eth_usage as u64));
     // Debug the balances
     assert_eq!(runtime.state_root_hash(), test.post.hash);
-
-    // For each transaction create an EVM context, send the transaction and then apply the changes
 }
 
 generate_official_tests_from_folder!(
     "./tests/official_tests/tests/GeneralStateTests/VMTests/vmArithmeticTest"
 );
+
+// generate_official_tests_from_folder!(
+//     "./tests/official_tests/tests/GeneralStateTests/stRandom"
+// );
+
+// generate_official_tests_from_file!(
+//     "./tests/official_tests/tests/GeneralStateTests/VMTests/vmArithmeticTest/arith.json"
+// );

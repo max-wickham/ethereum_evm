@@ -70,7 +70,7 @@ pub struct TestInfo {
     pub filling_rpc_server: String,
     #[serde(rename = "filling-tool-version")]
     pub filling_tool_version: String,
-    pub labels: BTreeMap<String, String>,
+    pub labels: Option<BTreeMap<String, String>>,
     pub generated_test_hash: String,
     #[serde(rename = "lllcversion")]
     pub lllc_version: String,
