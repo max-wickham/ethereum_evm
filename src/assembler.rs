@@ -1,8 +1,7 @@
 // TODO complete PUSH instructions
 
 use std::str::FromStr;
-
-use ethnum::U256;
+use primitive_types::U256;
 
 fn remove_char(input: &str, target: char) -> String {
     input.chars().filter(|&c| c != target).collect()
@@ -312,7 +311,7 @@ pub fn assemble(code: String) -> Vec<u8> {
                 println!("{}",next_word);
                 let constant = U256::from_str(next_word.as_str()).unwrap();
                 let mut result: Vec<u8> = vec![0x7f];
-                result.append(&mut constant.to_be_bytes().to_vec());
+                result.append(&mut {let x: &mut [u8] = &mut []; constant.to_big_endian(x); x}.to_vec());
                 result
             }
             "DUP_1" => {

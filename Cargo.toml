@@ -8,12 +8,13 @@ edition = "2021"
 [dependencies]
 array-init = "2.1.0"
 ethereum = "0.15.0"
-ethnum = {version = "1.5.0", features = ["serde"]}
+primitive-types = { version = "0.12", features = ["rlp", "serde"] }
 hex = "0.4.3"
-keccak-hash = "0.10.0"
 paste = "1.0.14"
 rlp = "0.5.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha3 = "0.10.8"
 test_gen = { path = "./test_gen" }
 thiserror = "1.0.58"
+num256 = "0.5.1"

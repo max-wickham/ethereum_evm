@@ -1,6 +1,10 @@
+use std::collections::HashMap;
+
 use proc_macro::TokenStream;
 use quote::quote;
 use serde::{Deserialize, Deserializer, Serialize};
+use serde_json::Value;
+use std::fs;
 use syn::{parse_macro_input, Ident, LitStr};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -13,33 +17,35 @@ struct BasicTestObject {
 
 #[proc_macro]
 pub fn generate_tests(input: TokenStream) -> TokenStream {
-    let file_name_lit = parse_macro_input!(input as LitStr);
-    let file_name = file_name_lit.value();
-
-    // Read the content of the specified JSON file
-    let input_str = match std::fs::read_to_string(&file_name) {
-        Ok(content) => content,
-        Err(err) => {
-            // Handle file reading error here
-            panic!("Failed to read file {}: {:?}", file_name, err);
-        }
-    };
-
-    let input: Vec<BasicTestObject> = match serde_json::from_str(&input_str) {
-        Ok(obj) => obj,
-        Err(err) => {
-            // Handle parsing error here
-            panic!("Failed to parse input from file {}: {:?}", file_name, err);
-        }
-    };
-
+    let folder_name_lit = parse_macro_input!(input as LitStr);
+    let folder_name = folder_name_lit.value();
     let mut tests = Vec::new();
-    for (_, test) in input.into_iter().enumerate() {
-        let test_name = Ident::new(test.name.as_str(), proc_macro2::Span::call_site());
-        let code = test.code.as_str();
-        let result_address = test.result_address;
-        let result_value = test.result_value;
-        tests.push(quote! {
+    for entry in fs::read_dir(folder_name).unwrap() {
+        let entry = entry.unwrap();
+        let file_name = String::from(entry.path().to_str().unwrap());
+        // Read the content of the specified JSON file
+        let input_str = match std::fs::read_to_string(&file_name) {
+            Ok(content) => content,
+            Err(err) => {
+                // Handle file reading error here
+                panic!("Failed to read file {}: {:?}", file_name, err);
+            }
+        };
+
+        let input: Vec<BasicTestObject> = match serde_json::from_str(&input_str) {
+            Ok(obj) => obj,
+            Err(err) => {
+                // Handle parsing error here
+                panic!("Failed to parse input from file {}: {:?}", file_name, err);
+            }
+        };
+
+        for (_, test) in input.into_iter().enumerate() {
+            let test_name = Ident::new(test.name.as_str(), proc_macro2::Span::call_site());
+            let code = test.code.as_str();
+            let result_address = test.result_address;
+            let result_value = test.result_value;
+            tests.push(quote! {
                 #[test]
                 fn #test_name() {
 
@@ -90,12 +96,104 @@ pub fn generate_tests(input: TokenStream) -> TokenStream {
                     assert_eq!(*mock_runtime.storage(U256::from(1 as u64)).get(&(U256::from_str(#result_address).unwrap())).unwrap(), U256::from_str(#result_value).unwrap());
                 }
             });
+        }
     }
-
     // Combine all generated tests into a single TokenStream
     let expanded = quote! {
         #(#tests)*
     };
 
     TokenStream::from(expanded)
+}
+
+fn explore_json(data: &Value, prefix: &str) {
+    match data {
+        Value::Object(obj) => {
+            for (key, value) in obj {
+                println!("{}Key: {}", prefix, key);
+                // Recursively explore nested JSON objects
+                explore_json(value, &format!("{}  ", prefix));
+            }
+        }
+        Value::Array(arr) => {
+            for (index, value) in arr.iter().enumerate() {
+                println!("{}Index: {}", prefix, index);
+                // Recursively explore nested JSON objects
+                explore_json(value, &format!("{}  ", prefix));
+            }
+        }
+        _ => {
+            // Base case: print the value
+            println!("{}Value: {}", prefix, data);
+        }
+    }
+}
+
+#[proc_macro]
+pub fn generate_official_tests_from_folder(input: TokenStream) -> TokenStream {
+    let folder_name_lit = parse_macro_input!(input as LitStr);
+    let folder_name = folder_name_lit.value();
+    let mut tests = Vec::new();
+    for entry in fs::read_dir(folder_name).unwrap() {
+        let entry = entry.unwrap().path();
+        let file_name = String::from(entry.to_str().unwrap());
+        let test_name = entry.file_stem().unwrap().to_str().unwrap();
+
+        println!("File: {}", file_name);
+        // Read the content of the specified JSON file
+        let input_str = match std::fs::read_to_string(&file_name) {
+            Ok(content) => content,
+            Err(err) => {
+                // Handle file reading error here
+                panic!("Failed to read file {}: {:?}", file_name, err);
+            }
+        };
+
+        let json_data: HashMap<String, Value> = serde_json::from_str(&input_str).unwrap();
+        // println!("JSON data: {:?}", json_data);
+        let mut num_tests: usize = 0;
+        match json_data[test_name].clone() {
+            Value::Object(obj) => match obj["post"].clone() {
+                Value::Object(post) => match post["Berlin"].clone() {
+                    Value::Object(berlin) => {
+                        println!("Berlin: {:?}", berlin);
+                    }
+
+                    Value::Array(arr) => {
+                        num_tests = arr.len();
+                    }
+                    _ => {
+                        panic!("Expected a JSON object at the root");
+                    }
+                },
+                _ => {
+                    panic!("Expected a JSON object at the root");
+                }
+            },
+            _ => {
+                panic!("Expected a JSON object at the root");
+            }
+        }
+
+        for i in 0..num_tests {
+            let test_name = Ident::new(
+                format!("run_test_{}_{}",test_name, i).as_str(),
+                proc_macro2::Span::call_site(),
+            );
+            tests.push(quote! {
+                #[test]
+                fn #test_name() {
+                    let filename = #file_name;
+                    run_test_file(filename.to_string(), true, #i);
+                }
+            });
+        }
+    }
+    // Combine all generated tests into a single TokenStream
+    let expanded = quote! {
+        #(#tests)*
+    };
+
+    TokenStream::from(expanded)
+    // TokenStream::from(quote!{})
 }

@@ -1,7 +1,5 @@
 use std::{collections::BTreeMap, hash::Hash};
-
-use ethnum::U256;
-
+use primitive_types::{H256, U256};
 pub trait Runtime {
     /*
     Runtime that can be used by the EVM, requires the following methods to be implemented.
@@ -9,7 +7,7 @@ pub trait Runtime {
     */
 
     // Block information
-    fn block_hash(&self, block_number: U256) -> U256;
+    fn block_hash(&self, block_number: U256) -> H256;
     fn block_number(&self) -> U256;
     fn block_coinbase(&self) -> U256;
     fn block_timestamp(&self) -> U256;
@@ -22,11 +20,12 @@ pub trait Runtime {
     // Contract information
     fn balance(&self, address: U256) -> U256;
     fn code_size(&self, address: U256) -> U256;
-    fn code_hash(&self, address: U256) -> U256;
+    fn code_hash(&self, address: U256) -> H256;
     fn code(&self, address: U256) -> Vec<u8>;
     fn exists(&self, address: U256) -> bool;
     fn nonce(&self, address: U256) -> U256;
-    fn storage(&mut self, address: U256) -> &BTreeMap<U256, U256>;
+    fn storage(&mut self, address: U256) -> &BTreeMap<H256, H256>;
+    fn original_storage(&mut self, address: U256) -> &BTreeMap<H256, H256>;
 
     // Modify Contract State
     fn is_deleted(&self, address: U256) -> bool;
@@ -40,7 +39,7 @@ pub trait Runtime {
     }
     fn mark_hot(&mut self, address: U256);
     fn mark_hot_index(&mut self, address: U256, index: U256);
-    fn set_storage(&mut self, address: U256, index: U256, value: U256);
+    fn set_storage(&mut self, address: U256, index: U256, value: H256);
     fn mark_delete(&mut self, address: U256);
     fn reset_storage(&mut self, address: U256);
     fn set_code(&mut self, address: U256, code: Vec<u8>);
