@@ -40,16 +40,23 @@ impl Memory {
     #[inline]
     pub fn copy_from(
         &mut self,
-        memory: &Memory,
+        memory: &mut Memory,
         read_address: usize,
         write_address: usize,
         length: usize,
-    ) {
+    ) -> usize {
         if write_address > self.max_index {
             self.expand(write_address)
         }
+        println!("Memory {:?}", memory.bytes);
+        let start_cost= memory.compute_memory_cost();
+        if memory.bytes.len() < read_address + length {
+            memory.expand(read_address + length)
+        }
+        let cost = memory.compute_memory_cost() - start_cost;
         self.bytes[write_address..write_address + length]
-            .copy_from_slice(&memory.bytes[read_address..read_address + length]);
+            .copy_from_slice(&memory.bytes[read_address..(read_address + length)]);
+        cost
     }
 
     #[inline]
@@ -99,6 +106,9 @@ impl Memory {
 
     #[inline]
     fn compute_memory_cost(&mut self) -> usize {
+        if self.bytes.len() == 0 {
+            return 0;
+        }
         self.max_index = self.bytes.len() - 1;
         let memory_size_word = (self.max_index / 4) as u64;
         self.memory_cost =

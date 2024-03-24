@@ -1,16 +1,16 @@
-use std::ops::{Add, Div, Mul, Sub};
+use std::ops::{Add, Div, Mul, Rem, Sub};
 
 use crate::gas_calculator::call_data_gas_cost;
 use crate::runtime;
 // use crate::main;
 use crate::state::memory::Memory;
 use crate::state::stack::Stack;
-use crate::util::{self, h256_to_u256, keccak256, u256_to_array, u256_to_h256};
+use crate::util::{self, h256_to_u256, int256_to_uint256, keccak256, u256_to_array, u256_to_h256, u256_to_uint256, uint256_to_int256};
 use crate::{bytecode_spec::opcodes, runtime::Runtime};
 use num256::{Int256, Uint256};
 use paste::paste;
 use primitive_types::U256;
-
+const ZERO: U256 = U256::zero();
 #[derive(Clone)]
 struct Transaction {
     pub origin: U256,
@@ -126,6 +126,9 @@ impl EVMContext {
                 return false;
             }
         }
+        if debug {
+            println!("Gas : {:x}", self.gas_input - self.gas_usage);
+        }
 
         true
     }
@@ -156,6 +159,7 @@ impl EVMContext {
                             #[allow(unreachable_code)]
                             #[allow(unused_variables)]{
                             {
+                                print!("PC: {} ", self.program_counter);
                                 let current_gas_usage = self.gas_usage;
                                 if !(stringify!($pat).contains("PUSH") ||
                                     stringify!($pat).contains("DUP") ||
@@ -176,7 +180,6 @@ impl EVMContext {
         }
 
         let opcode: u8 = self.program[self.program_counter];
-        let x = U256::zero();
         debug_match!(opcode, {
 
             opcodes::STOP => {
@@ -204,52 +207,96 @@ impl EVMContext {
 
             opcodes::DIV => {
                 let (a, b) = (self.stack.pop(), self.stack.pop());
-                self.stack.push(a.div_mod(b).0);
+                match b {
+                    ZERO => {
+                        self.stack.push(U256::zero());
+                    },
+                    _ => {
+                        self.stack.push(a.div_mod(b).0);
+                    }
+                }
                 self.gas_usage += 5;
             },
 
             opcodes::SDIV => {
                 let (a, b) = (self.stack.pop(), self.stack.pop());
-                let a : Int256 = Uint256::from(TryInto::<[u8;32]>::try_into(u256_to_array(a)).unwrap()).try_into().unwrap();
-                let b : Int256 = Uint256::from(TryInto::<[u8;32]>::try_into(u256_to_array(b)).unwrap()).try_into().unwrap();
-                let result: Uint256 = (a / b).try_into().unwrap();
-                let result = U256::from(result.to_be_bytes());
-                self.stack.push(result);
+                match b {
+                    ZERO => {
+                        self.stack.push(U256::zero());
+                    },
+                    _ => {
+                        let a : Int256 = Uint256::from(TryInto::<[u8;32]>::try_into(u256_to_array(a)).unwrap()).try_into().unwrap();
+                        let b : Int256 = Uint256::from(TryInto::<[u8;32]>::try_into(u256_to_array(b)).unwrap()).try_into().unwrap();
+                        let result: Uint256 = int256_to_uint256(a / b);
+                        let result = U256::from(result.to_be_bytes());
+                        self.stack.push(result);
+                    }
+                }
                 self.gas_usage += 5;
             },
 
             opcodes::MOD => {
                 let (a, b) = (self.stack.pop(), self.stack.pop());
-                self.stack.push(a.div_mod(b).1);
+                match b {
+                    ZERO => {
+                        self.stack.push(U256::zero());
+                    },
+                    _ => {
+                        self.stack.push(a.rem(b));
+                    }
+                }
                 self.gas_usage += 5;
             },
 
             opcodes::SMOD => {
                 let (a, b) = (self.stack.pop(), self.stack.pop());
-                let a : Int256 = Uint256::from(TryInto::<[u8;32]>::try_into(u256_to_array(a)).unwrap()).try_into().unwrap();
-                let b : Int256 = Uint256::from(TryInto::<[u8;32]>::try_into(u256_to_array(b)).unwrap()).try_into().unwrap();
-                let result: Uint256 = (a % b).try_into().unwrap();
-                let result = U256::from(result.to_be_bytes());
-                self.stack.push(result);
+                match b {
+                    ZERO => {
+                        self.stack.push(U256::zero());
+                    },
+                    _ => {
+                        let a = uint256_to_int256(u256_to_uint256(a));
+                        let b = uint256_to_int256(u256_to_uint256(b));
+                        println!("a: {}, b: {}, {}", a, b, (a.rem(b) + b).rem(b));
+                        let result: Uint256 = int256_to_uint256((a.rem(b) + b).rem(b));
+                        let result = U256::from(result.to_be_bytes());
+                        self.stack.push(result);
+                    }
+                }
                 self.gas_usage += 5;
 
             },
 
             opcodes::ADDMOD => {
                 let (a, b, c) = (self.stack.pop(), self.stack.pop(), self.stack.pop());
-                self.stack.push((a + b) % c);
+                match c {
+                    ZERO => {
+                        self.stack.push(U256::zero());
+                    },
+                    _ => {
+                        self.stack.push(a.checked_rem(c).unwrap().overflowing_add(b.checked_rem(c).unwrap()).0);
+                    }
+                }
                 self.gas_usage += 8;
             },
 
             opcodes::MULMOD => {
                 let (a, b, c) = (self.stack.pop(), self.stack.pop(), self.stack.pop());
-                self.stack.push((a * b) % c);
+                match c {
+                    ZERO => {
+                        self.stack.push(U256::zero());
+                    },
+                    _ => {
+                        self.stack.push(a.checked_rem(c).unwrap().overflowing_mul(b.checked_rem(c).unwrap()).0.checked_rem(c).unwrap());
+                    }
+                }
+                // println!("a: {}, b: {}, c: {}", a, b, c);
                 self.gas_usage += 8;
             },
 
             opcodes::EXP => {
                 let (a, exponent) = (self.stack.pop(), self.stack.pop());
-                self.stack.push(a.pow(exponent));
+                self.stack.push(a.overflowing_pow(exponent).0);
                 self.gas_usage += 10 + 50 * (util::bytes_for_u256(&exponent) as u64);
             },
 
@@ -413,7 +460,7 @@ impl EVMContext {
                 );
                 let current_memory_usage = self.memory.memory_cost;
                     self.memory
-                        .copy_from(&self.message.data, offset, dest_offset, length);
+                        .copy_from(&mut self.message.data, offset, dest_offset, length);
                     let new_usage = self.memory.memory_cost;
                     self.gas_usage +=
                         3 + 3 * (length as u64 + 31 / 32) + (new_usage - current_memory_usage).as_u64();
@@ -433,7 +480,7 @@ impl EVMContext {
 
                 let current_memory_usage = self.memory.memory_cost;
                 self.memory
-                    .copy_from(&self.program, offset, dest_offset, length);
+                    .copy_from(&mut self.program, offset, dest_offset, length);
                 let new_usage = self.memory.memory_cost;
                 self.gas_usage +=
                     3 + 3 * (length as u64 + 31 / 32) + (new_usage - current_memory_usage).as_u64();
@@ -461,7 +508,7 @@ impl EVMContext {
 
                 let current_memory_usage = self.memory.memory_cost;
                 self.memory.copy_from(
-                    &Memory::from(runtime.code(addr)),
+                    &mut Memory::from(runtime.code(addr)),
                     offset,
                     dest_offset,
                     length,
@@ -487,7 +534,7 @@ impl EVMContext {
                 );
                 let current_memory_usage = self.memory.memory_cost;
                 self.memory
-                    .copy_from(&self.last_return_data, offset, dest_offset, length);
+                    .copy_from(&mut self.last_return_data, offset, dest_offset, length);
                 let new_usage = self.memory.memory_cost;
                 self.gas_usage +=
                     3 + 3 * (length as u64 + 31 / 32) + (new_usage - current_memory_usage).as_u64();
@@ -620,15 +667,21 @@ impl EVMContext {
             },
 
             opcodes::JUMP => {
+
+                println!("Jumping");
                 let destination = self.stack.pop().as_usize();
+                println!("Destination: {}", destination);
                 self.program_counter = destination;
+                self.program_counter -= 1;
+                println!("Program Counter: {}", self.program_counter);
                 self.gas_usage += 8;
             },
+
 
             opcodes::JUMPI => {
                 let (destination, condition) = (self.stack.pop().as_usize(), self.stack.pop());
                 if !condition.eq(&U256::zero()) {
-                    self.program_counter = destination;
+                    self.program_counter = destination - 1;
                 }
                 self.gas_usage += 10;
             },
@@ -646,6 +699,10 @@ impl EVMContext {
             opcodes::GAS => {
                 self.stack.push(U256::from(self.gas_input - self.gas_usage));
                 self.gas_usage += 2;
+            },
+
+            opcodes::JUMPDEST => {
+                self.gas_usage += 1;
             },
 
             opcodes::PUSH_1..=opcodes::PUSH_32 => {
@@ -685,9 +742,12 @@ impl EVMContext {
 
             opcodes::RETURN => {
                 let (offset, size) = (self.stack.pop().as_usize(), self.stack.pop().as_usize());
+                println!("Return: {}, {}", offset, size);
                 self.result.set_length(size);
-                self.result.copy_from(&self.memory, offset, 0, size);
-                self.gas_usage += 0;
+                // self.result.copy_from(&mut self.memory, offset, 0, size);
+                self.gas_usage += self.result.copy_from(&mut self.memory, offset, 0, size) as u64;
+                self.stopped = true;
+                return true;
             },
 
             opcodes::DELEGATECALL => {
@@ -774,7 +834,6 @@ impl EVMContext {
             100
         } else {
             runtime.mark_hot(address);
-            println!("Is not hot");
             2600
         };
         // TODO check gas is okay
@@ -788,7 +847,7 @@ impl EVMContext {
                 caller: self.contract_address,
                 data: {
                     let mut memory: Memory = Memory::new();
-                    memory.copy_from(&self.memory, args_offset, 0, args_size);
+                    memory.copy_from(&mut self.memory, args_offset, 0, args_size);
                     memory
                 },
                 value: value,
@@ -804,7 +863,7 @@ impl EVMContext {
         self.last_return_data = sub_evm.result;
         let current_memory_cost = self.memory.memory_cost;
         self.memory
-            .copy_from(&self.last_return_data, 0, ret_offset, ret_size);
+            .copy_from(&mut self.last_return_data, 0, ret_offset, ret_size);
         let new_memory_cost = self.memory.memory_cost;
         self.stack.push(U256::from(response as u64));
         let memory_expansion_cost = (new_memory_cost - current_memory_cost).as_u64();
