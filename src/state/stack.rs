@@ -4,7 +4,7 @@ use primitive_types::U256;
 
 use crate::util::u256_to_array;
 
-const STACK_SIZE: usize = 1024;
+const STACK_SIZE: usize = 1024* 32;
 
 pub struct Stack {
     data: [u8; STACK_SIZE],
