@@ -1,5 +1,4 @@
-
-
+use primitive_types::U256;
 
 #[inline]
 pub fn call_data_gas_cost(data: &Vec<u8>) -> usize {
@@ -12,4 +11,34 @@ pub fn call_data_gas_cost(data: &Vec<u8>) -> usize {
         }
     }
     cost
+}
+
+#[derive(Copy,Clone)]
+pub struct GasRecorder {
+    pub gas_usage: usize,
+}
+
+impl GasRecorder {
+    pub fn record_gas(&mut self, gas: usize) {
+        self.gas_usage += gas;
+    }
+
+    pub fn record_memory_usage(&mut self, current_memory_size: usize, new_memory_size: usize) {
+        if new_memory_size == 0 {
+            return;
+        }
+        let max_index = new_memory_size - 1;
+        let memory_size_word = (max_index / 4) as u64;
+        let old_cost = GasRecorder::memory_cost(new_memory_size);
+        let new_cost = GasRecorder::memory_cost(current_memory_size);
+        let len = new_memory_size - current_memory_size;
+        let memory_expansion_cost = 3 + 3 * (len as u64 + 31 / 32) as usize + (new_cost - old_cost);
+        self.gas_usage += memory_expansion_cost;
+    }
+
+    fn memory_cost(current_memory_size_bytes: usize) -> usize {
+        let memory_size_word = (current_memory_size_bytes - 1) / 4;
+        let memory_cost = usize::pow(memory_size_word, 2) / 512 + (3 * memory_size_word);
+        memory_cost
+    }
 }

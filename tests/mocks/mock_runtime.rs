@@ -1,10 +1,11 @@
 use ethereum_evm::runtime::Runtime;
 use ethereum_evm::util::{h256_to_u256, keccak256, u256_to_h256};
-use hex::encode;
 use primitive_types::{H160, H256, U256};
 use rlp::{Encodable, RlpStream};
-use std::collections::HashSet;
 use std::collections::BTreeMap;
+use std::collections::HashSet;
+
+#[derive(Clone)]
 pub struct Contract {
     pub balance: U256,
     pub code_size: U256,
@@ -29,6 +30,7 @@ pub struct MockRuntime {
     pub block_base_fee_per_gas: U256,
     pub chain_id: U256,
     pub contracts: BTreeMap<U256, Contract>,
+    pub contexts: Vec<BTreeMap<U256, Contract>>,
 }
 
 #[derive(Debug)]
@@ -51,7 +53,6 @@ impl Encodable for RLPContract {
                 s.begin_list(5);
             }
         }
-        // TODO: debugging
         println!("nonce: {:x?}", self.nonce);
         println!("balance: {:x?}", self.balance);
         println!("storage_root_hash: {:x?}", self.storage_root_hash);
@@ -68,42 +69,40 @@ impl Encodable for RLPContract {
 
 impl MockRuntime {
     pub fn state_root_hash(&self) -> H256 {
-        let tree: Vec<(_, _)> =
-            self.contracts
-                .iter()
-                .map(|(address, contract)| {
-                    (H160::from(u256_to_h256(*address)), {
-                        println!("");
-                        println!("address: {:x}", address);
-                        println!("storage: {:?}", contract.active_storage);
-                        let encoded_contract = rlp::encode(&RLPContract {
-                            storage_root_hash:
-                                ethereum::util::sec_trie_root(
-                                    contract.active_storage.iter().map(|(key, value)| {
-                                        (key, rlp::encode(&h256_to_u256(*value)))
-                                    }),
-                                )
-                            ,
-                            code_hash: keccak256(&contract.code),
-                            nonce: contract.nonce,
-                            balance: contract.balance,
-                            code_version: U256::zero(),
-                        });
-                        // println!("encoded_contract: {:x?}", encode(keccak256(&encoded_contract.to_vec())));
-                        encoded_contract
-                    })
+        let tree: Vec<(_, _)> = self
+            .contracts
+            .iter()
+            .map(|(address, contract)| {
+                (H160::from(u256_to_h256(*address)), {
+                    println!("");
+                    println!("address: {:x}", address);
+                    println!("storage: {:?}", contract.active_storage);
+                    let encoded_contract = rlp::encode(&RLPContract {
+                        storage_root_hash: ethereum::util::sec_trie_root(
+                            contract
+                                .active_storage
+                                .iter()
+                                .map(|(key, value)| (key, rlp::encode(&h256_to_u256(*value)))),
+                        ),
+                        code_hash: keccak256(&contract.code),
+                        nonce: contract.nonce,
+                        balance: contract.balance,
+                        code_version: U256::zero(),
+                    });
+                    // println!("encoded_contract: {:x?}", encode(keccak256(&encoded_contract.to_vec())));
+                    encoded_contract
                 })
-                .collect::<Vec<_>>();
-            // println!("tree: {:x?}", &tree);
-            let x = ethereum::util::sec_trie_root(tree);
-            // println!("state_root_hash: {:x?}", x);
-            x
-
+            })
+            .collect::<Vec<_>>();
+        // println!("tree: {:x?}", &tree);
+        let x = ethereum::util::sec_trie_root(tree);
+        // println!("state_root_hash: {:x?}", x);
+        x
     }
 }
 
 impl Runtime for MockRuntime {
-    // Block information
+    // Block State
     fn block_hash(&self, block_number: U256) -> H256 {
         self.block_hashes[&block_number]
     }
@@ -132,81 +131,124 @@ impl Runtime for MockRuntime {
         self.chain_id
     }
 
+    // TODO add default values if address is not found
+    // Context state
     fn balance(&self, address: U256) -> U256 {
-        self.contracts[&address].balance
+        self.last_context()[&address].balance
     }
     fn code_size(&self, address: U256) -> U256 {
-        self.contracts[&address].code_size
+        self.last_context()[&address].code_size
     }
     fn code_hash(&self, address: U256) -> H256 {
-        self.contracts[&address].code_hash
+        self.last_context()[&address].code_hash
     }
     fn nonce(&self, address: U256) -> U256 {
-        self.contracts[&address].nonce
+        self.last_context()[&address].nonce
     }
     fn code(&self, address: U256) -> Vec<u8> {
-        self.contracts[&address].code.clone()
+        self.last_context()[&address].code.clone()
     }
     fn exists(&self, address: U256) -> bool {
-        self.contracts.contains_key(&address)
+        self.last_context().contains_key(&address)
     }
     fn storage(&mut self, address: U256) -> &BTreeMap<H256, H256> {
-        &mut self.contracts.get_mut(&address).unwrap().active_storage
+        &mut self.last_context().get_mut(&address).unwrap().storage
     }
     fn original_storage(&mut self, address: U256) -> &BTreeMap<H256, H256> {
-        &mut self.contracts.get_mut(&address).unwrap().storage
+        &mut self
+            .penultimate_context()
+            .get_mut(&address)
+            .unwrap()
+            .storage
     }
 
-    // Modify Contract State
+    // TODO add logic if address is not found
+    // Modify Contract State (Should always be valid addresses)
     fn is_deleted(&self, address: U256) -> bool {
-        self.contracts[&address].is_deleted
+        self.last_context()[&address].is_deleted
     }
     fn is_cold(&self, address: U256) -> bool {
-        self.contracts[&address].is_cold
+        self.last_context()[&address].is_cold
     }
     fn is_cold_index(&self, address: U256, index: U256) -> bool {
-        !self.contracts[&address].hot_keys.contains(&index)
+        !self.last_context()[&address].hot_keys.contains(&index)
     }
     fn mark_hot(&mut self, address: U256) {
-        self.contracts.get_mut(&address).unwrap().active_storage =
-            self.contracts.get_mut(&address).unwrap().storage.clone();
-        self.contracts.get_mut(&address).unwrap().is_cold = false;
+        self.last_context().get_mut(&address).unwrap().is_cold = false;
     }
     fn mark_hot_index(&mut self, address: U256, index: U256) {
-        self.contracts
+        self.last_context()
             .get_mut(&address)
             .unwrap()
             .hot_keys
             .insert(index);
     }
     fn set_storage(&mut self, address: U256, index: U256, value: H256) {
-        self.contracts
+        self.last_context()
             .get_mut(&address)
             .unwrap()
-            .active_storage
+            .storage
             .insert(u256_to_h256(index), value);
     }
     fn mark_delete(&mut self, address: U256) {
-        self.contracts.get_mut(&address).unwrap().is_deleted = true;
+        self.last_context().get_mut(&address).unwrap().is_deleted = true;
     }
     fn reset_storage(&mut self, address: U256) {
-        self.contracts.get_mut(&address).unwrap().storage = BTreeMap::new();
+        self.last_context().get_mut(&address).unwrap().storage = BTreeMap::new();
     }
     fn set_code(&mut self, address: U256, code: Vec<u8>) {
-        self.contracts.get_mut(&address).unwrap().code = code;
+        self.last_context().get_mut(&address).unwrap().code = code;
     }
     fn reset_balance(&mut self, address: U256) {
-        self.contracts.get_mut(&address).unwrap().balance = U256::from(0 as u64);
+        self.last_context().get_mut(&address).unwrap().balance = U256::from(0 as u64);
     }
     fn deposit(&mut self, target: U256, value: U256) {
-        // TODO
-        self.contracts.get_mut(&target).unwrap().balance += value;
+        self.last_context().get_mut(&target).unwrap().balance += value;
     }
     fn withdrawal(&mut self, source: U256, value: U256) {
-        // TODO
-        self.contracts.get_mut(&source).unwrap().balance -= value;
+        self.last_context().get_mut(&source).unwrap().balance -= value;
     }
     fn increase_nonce(&mut self, address: U256) {
-        self.contracts.get_mut(&address).unwrap().nonce += U256::from(1);
+        self.last_context().get_mut(&address).unwrap().nonce += U256::from(1);
+    }
+
+    // Modify context stack
+    fn add_context(&mut self) {
+        match self.contexts.last() {
+            Some(context) => {
+                self.contexts.push(context.clone());
+            }
+            None => {
+                self.contexts.push(self.contracts.clone());
+            }
+        }
+    }
+    fn merge_context(&mut self) {
+        // TODO
+    }
+    fn revert_context(&mut self) {
+        // TODO need to know whether to maintain hot cold of contracts?
+        match self.contexts.last() {
+            Some(_) => {
+                self.contexts.pop();
+            }
+            None => {}
+        }
+    }
+}
+
+impl MockRuntime {
+    fn last_context(&mut self) -> &BTreeMap<U256, Contract> {
+        match self.contexts.last() {
+            Some(context) => context,
+            None => &self.contracts,
+        }
+    }
+
+    fn penultimate_context(&mut self) -> &BTreeMap<U256, Contract> {
+        match self.contexts.get(self.contexts.len() - 2) {
+            Some(context) => context,
+            None => &self.contracts,
+        }
     }
 }

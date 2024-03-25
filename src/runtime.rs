@@ -47,4 +47,8 @@ pub trait Runtime {
     fn deposit(&mut self, target: U256, value: U256);
     fn withdrawal(&mut self, source: U256, value: U256);
     fn increase_nonce(&mut self, address: U256);
+
+    fn add_context(&mut self);
+    fn merge_context(&mut self);
+    fn revert_context(&mut self);
 }
