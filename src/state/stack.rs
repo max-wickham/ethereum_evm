@@ -42,11 +42,13 @@ impl Stack {
     }
 
     #[inline]
-    pub fn pop(&mut self) -> U256 {
+    pub fn pop(&mut self) -> Result<U256,()> {
+        if self.stack_pointer < 32 {
+            return Err(())
+        }
         let u256_from_bytes = U256::from_big_endian(self.data[self.stack_pointer-32..self.stack_pointer].try_into().unwrap());
         self.stack_pointer -= 32;
-        // println!("Popped {:?}", u256_from_bytes);
-        u256_from_bytes
+        Ok(u256_from_bytes)
     }
 
     #[inline]

@@ -1,11 +1,23 @@
 # TODO
 
-- [_] Create better gas tracking, especially for memory
+- [_] Replace closure with macro
+- [_] Move entire decode step into inline function
+- [_] Restructure code into a folder system
+- [_] More specific error handling
+- [x] Create better gas tracking, (especially for memory)
+    - [x] Created gas tracker
+    - [x] Apply gas tracker to memory operations
+    - [x] Apply gas tracker to all other operations
+- [?] Implement Reverts if failure (especially in calls)
+- [_] Check the failure behavior of every instruction
+- [_] Create a helper proc macro that creates a map from opcode to string value
+
+- [_] Remove assembler
 - [_] Fix test proc to auto detect if a file or folder and auto search sub directories
 - [_] Allow specifying of a specific test in a file
-- [_] Get all arithmetic tests to pass
-- [_] Fix SSTORE and CALL costs (still not very clear)
-- [_] Implement better system for reverts etc.
+- [?] Get all arithmetic tests to pass
+- [?] Fix SSTORE and CALL costs (still not very clear)
+- [?] Implement better system for reverts etc.
 - [x] Check against official ethereum vm logs to debug
 - [x] Fix memory access costs, need to consolidate all memory accesses to a single memory
 - [x] Fix debug code to be prettier
@@ -13,7 +25,7 @@
 - [x] Apply gas usage
 - [x] Get the root hash to work on a test, require making sure gas usage is applied and that the hash is calculated correctly
 - [x] Restructure the way in which a transaction is called on the EVM
-- [_] Allow reverting of storage (can be done inefficiently for now)
+- [x] Allow reverting of storage (can be done inefficiently for now)
 - [x] Implement hash of state for mock runtime
 
 - [x] Finish implementing call, (without gas calculations)
@@ -22,8 +34,8 @@
     - [_] Create tests for all basic arithmetic instructions
 - [x] Add variable gas calculations
 - [x] Create test implementing of Runtime
-- [_] Revert only current context, (not also if a call fails)
-- [_] Handle not enough values on stack
+- [x] Revert only current context, (not also if a call fails)
+- [x] Handle not enough values on stack
 - [_] Define test for instructions using runtime
 - [_] Implement delegate call and create 2
 - [_] Implement Create
