@@ -665,7 +665,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         },
 
         opcodes::MSIZE => {
-            evm.stack.push(U256::from(evm.memory.max_index as u64));
+            evm.stack.push(U256::from((evm.memory.max_index + 1) as u64));
             evm.gas_recorder.record_gas(2);
         },
 

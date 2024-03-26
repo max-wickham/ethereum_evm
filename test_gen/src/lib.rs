@@ -154,7 +154,7 @@ pub fn generate_official_tests_from_folder(input: TokenStream) -> TokenStream {
 
         for i in 0..num_tests {
             let test_name = Ident::new(
-                format!("run_test_{}_{}",test_name, i).as_str(),
+                format!("run_test_{}_{}",test_name.replace("+", "pos").replace("-", "min"), i).as_str(),
                 proc_macro2::Span::call_site(),
             );
             tests.push(quote! {

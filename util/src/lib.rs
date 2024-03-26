@@ -50,9 +50,6 @@ pub fn opcode_map(input: TokenStream) -> TokenStream {
             pub static ref OPCODE_MAP: phf::Map<u8, &'static str> = #map_tokens;
         }
     };
-
-    println!("{:?}", expanded.to_string());
-
     // Convert the generated tokens back into a TokenStream
     TokenStream::from(expanded)
 }
