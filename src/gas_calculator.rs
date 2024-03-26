@@ -29,16 +29,24 @@ impl GasRecorder {
         }
         let max_index = new_memory_size - 1;
         let memory_size_word = (max_index / 4) as u64;
-        let old_cost = GasRecorder::memory_cost(new_memory_size);
-        let new_cost = GasRecorder::memory_cost(current_memory_size);
+        let old_cost = GasRecorder::memory_cost(current_memory_size);
+        let new_cost = GasRecorder::memory_cost(new_memory_size);
+        // println!("Old cost: {}, New cost: {}", old_cost, new_cost);
         let len = new_memory_size - current_memory_size;
-        let memory_expansion_cost = 3 + 3 * (len as u64 + 31 / 32) as usize + (new_cost - old_cost);
+        // let memory_expansion_cost = 3 + 3 * (len as u64 + 31 / 32) as usize + (new_cost - old_cost);
+        let memory_expansion_cost = new_cost - old_cost;
         self.gas_usage += memory_expansion_cost;
     }
 
     fn memory_cost(current_memory_size_bytes: usize) -> usize {
-        let memory_size_word = (current_memory_size_bytes - 1) / 4;
-        let memory_cost = usize::pow(memory_size_word, 2) / 512 + (3 * memory_size_word);
+        if current_memory_size_bytes == 0 {
+            return 0;
+        }
+        let memory_size_word = (current_memory_size_bytes + 31) / 32;
+        let memory_cost = (memory_size_word.pow(2)) / 512 + (3 * memory_size_word);
         memory_cost
+        // let memory_size_word = (current_memory_size_bytes - 1) / 4;
+        // let memory_cost = usize::pow(memory_size_word, 2) / 512 + (3 * memory_size_word);
+        // memory_cost
     }
 }

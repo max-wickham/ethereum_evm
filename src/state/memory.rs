@@ -93,6 +93,10 @@ impl Memory {
 
     #[inline]
     fn expand(&mut self, new_max_address: usize, gas_recorder: &mut GasRecorder) {
+        if new_max_address == 0 {
+            return;
+        }
+        let new_max_address= new_max_address + 32;
         self.max_index = new_max_address;
         gas_recorder.record_memory_usage(self.bytes.len(), new_max_address);
         self.bytes.resize(new_max_address, 0);

@@ -105,8 +105,11 @@ impl EVMContext {
         runtime.add_context();
 
         let result = || -> bool {
-            self.gas_recorder
+            println!("Message data size : {}", self.message.data.bytes.len());
+            if self.message.data.bytes.len() != 0{
+                self.gas_recorder
                 .record_gas(call_data_gas_cost(&self.message.data.bytes));
+            }
             if debug {
                 println!("Call Data Gas Cost: {}", self.gas_recorder.gas_usage);
             }
@@ -118,7 +121,7 @@ impl EVMContext {
             }
             if debug {
                 println!(
-                    "Gas : {:x}",
+                    "Program Gas Usage : {:x}",
                     self.gas_input - self.gas_recorder.gas_usage as u64
                 );
             }

@@ -82,7 +82,7 @@ pub fn run_test(test: &TestState, debug: bool) {
         current_context: None,
     };
     runtime.add_context();
-
+    println!("Message data size : {}", test.transaction.data.len());
     // Execute the transaction
     let gas_usage = EVMContext::execute_transaction(
         &mut runtime,
@@ -125,13 +125,17 @@ pub fn run_test(test: &TestState, debug: bool) {
 }
 
 generate_official_tests_from_folder!(
-    "./tests/official_tests/tests/GeneralStateTests/VMTests/vmArithmeticTest"
+    "./tests/official_tests/tests/GeneralStateTests/stMemoryTest"
 );
+
+// generate_official_tests_from_folder!(
+//     "./tests/official_tests/tests/GeneralStateTests/stMemoryTest"
+// );
 
 // generate_official_tests_from_folder!(
 //     "./tests/official_tests/tests/GeneralStateTests/stRandom"
 // );
 
 // generate_official_tests_from_file!(
-//     "./tests/official_tests/tests/GeneralStateTests/VMTests/vmArithmeticTest/mul.json"
+//     "./tests/official_tests/tests/GeneralStateTests/stMemoryTest/mem32kb-1.json"
 // );
