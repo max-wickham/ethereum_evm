@@ -161,7 +161,7 @@ pub fn generate_official_tests_from_folder(input: TokenStream) -> TokenStream {
                 #[test]
                 fn #test_name() {
                     let filename = #file_name;
-                    run_test_file(filename.to_string(), false, #i);
+                    run_test_file(filename.to_string(), true, #i);
                 }
             });
         }
