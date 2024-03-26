@@ -57,7 +57,6 @@ pub fn run_test(test: &TestState, debug: bool) {
                         code: contract.code.0.clone(),
                         nonce: contract.nonce,
                         storage: contract.storage.clone(),
-                        active_storage: contract.storage.clone(),
                         is_deleted: false,
                         is_cold: true,
                         hot_keys: HashSet::new(),
@@ -73,7 +72,6 @@ pub fn run_test(test: &TestState, debug: bool) {
                     code: vec![],
                     nonce: U256::zero(),
                     storage: BTreeMap::new(),
-                    active_storage: BTreeMap::new(),
                     is_deleted: false,
                     is_cold: true,
                     hot_keys: HashSet::new(),
@@ -118,18 +116,22 @@ pub fn run_test(test: &TestState, debug: bool) {
         Some(_) => "Exists",
         _ => "Doesn't Exist",
     });
+    for (address, contract) in &runtime.contracts {
+        println!("Address: {:x}", address);
+        println!("Storage: {:?}", contract.storage);
+    }
     // Debug the balances
     assert_eq!(runtime.state_root_hash(), test.post.hash);
 }
 
-// generate_official_tests_from_folder!(
-//     "./tests/official_tests/tests/GeneralStateTests/VMTests/vmArithmeticTest"
-// );
+generate_official_tests_from_folder!(
+    "./tests/official_tests/tests/GeneralStateTests/VMTests/vmArithmeticTest"
+);
 
 // generate_official_tests_from_folder!(
 //     "./tests/official_tests/tests/GeneralStateTests/stRandom"
 // );
 
-generate_official_tests_from_file!(
-    "./tests/official_tests/tests/GeneralStateTests/VMTests/vmArithmeticTest/mul.json"
-);
+// generate_official_tests_from_file!(
+//     "./tests/official_tests/tests/GeneralStateTests/VMTests/vmArithmeticTest/mul.json"
+// );

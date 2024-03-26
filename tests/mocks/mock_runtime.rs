@@ -14,7 +14,6 @@ pub struct Contract {
     pub code: Vec<u8>,
     pub nonce: U256,
     pub storage: BTreeMap<H256, H256>,
-    pub active_storage: BTreeMap<H256, H256>,
     pub is_deleted: bool,
     pub is_cold: bool,
     pub hot_keys: HashSet<U256>,
@@ -81,11 +80,11 @@ impl MockRuntime {
                 (H160::from(u256_to_h256(*address)), {
                     println!("");
                     println!("address: {:x}", address);
-                    println!("storage: {:?}", contract.active_storage);
+                    println!("storage: {:?}", contract.storage);
                     let encoded_contract = rlp::encode(&RLPContract {
                         storage_root_hash: ethereum::util::sec_trie_root(
                             contract
-                                .active_storage
+                                .storage
                                 .iter()
                                 .map(|(key, value)| (key, rlp::encode(&h256_to_u256(*value)))),
                         ),
@@ -217,9 +216,9 @@ impl Runtime for MockRuntime {
             .unwrap()
             .storage
             .insert(u256_to_h256(index), value);
-        for (address, contract) in &self.current_context.as_ref().unwrap().contracts {
-            println!("Storage: {:?}", contract.storage);
-        }
+        // for (address, contract) in &self.current_context.as_ref().unwrap().contracts {
+        //     println!("Storage: {:?}", contract.storage);
+        // }
     }
     fn mark_delete(&mut self, address: U256) {
         self.current_context
@@ -304,18 +303,14 @@ impl Runtime for MockRuntime {
         };
     }
     fn merge_context(&mut self) {
-        println!("Merging Context");
-
         match mem::take(&mut self.current_context) {
             Some(mut context) => {
-                for (address, contract) in &context.contracts {
-                    println!("Storage: {:?}", contract.storage);
-                }
                 match &mut context.prev_context {
                     Some(prev_context) => {
                         prev_context.contracts = context.contracts;
                     }
                     None => {
+                        println!("Setting Contracts");
                         self.contracts = context.contracts;
                     }
                 }
