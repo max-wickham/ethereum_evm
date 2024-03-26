@@ -1,5 +1,5 @@
 use ethereum_evm::{
-    evm::EVMContext,
+    evm_logic::evm::EVMContext,
     runtime::Runtime,
     util::{keccak256, u256_to_h256},
 };
@@ -11,13 +11,14 @@ use std::{
 };
 use test_gen::{generate_official_tests_from_file, generate_official_tests_from_folder};
 
-use crate::mocks::mock_runtime::{Contract, MockRuntime};
+use crate::mocks::mock_runtime::{Context, Contract, MockRuntime};
 
 use super::types::{TestState, TestStateMulti};
 
 pub fn run_test_file(filename: String, debug: bool, index: usize) {
     let tests: BTreeMap<String, TestStateMulti> =
         serde_json::from_reader(BufReader::new(File::open(filename).unwrap())).unwrap();
+    println!("Debug: {:?}", debug);
     run_test(
         &tests
             .into_iter()
@@ -80,8 +81,9 @@ pub fn run_test(test: &TestState, debug: bool) {
             );
             contracts
         },
-        contexts: vec![],
+        current_context: None,
     };
+    runtime.add_context();
 
     // Execute the transaction
     let gas_usage = EVMContext::execute_transaction(
@@ -97,35 +99,37 @@ pub fn run_test(test: &TestState, debug: bool) {
 
     // Calculate the gas usage
     let eth_usage = (gas_usage) * test.transaction.gas_price.unwrap_or_default().as_usize();
+    println!("Debug: {:?}", debug);
     if debug {
         println!("Gas Usage: {}", gas_usage);
         println!("Eth Usage: {}", eth_usage);
         println!("Value: {}", test.transaction.value);
     }
     // send value the wallet
-    runtime
-        .contracts
-        .get_mut(&test.transaction.sender)
-        .unwrap()
-        .nonce += U256::from(1);
+    runtime.increase_nonce(test.transaction.sender);
     runtime.deposit(test.transaction.to, test.transaction.value);
     // withdraw the value from the sender
     runtime.withdrawal(test.transaction.sender, test.transaction.value);
     // withdraw the gas usage from the sender
     runtime.withdrawal(test.transaction.sender, U256::from(eth_usage as u64));
     runtime.deposit(test.env.current_coinbase, U256::from(eth_usage as u64));
+    runtime.merge_context();
+    println!("Context {:?}", match runtime.current_context {
+        Some(_) => "Exists",
+        _ => "Doesn't Exist",
+    });
     // Debug the balances
     assert_eq!(runtime.state_root_hash(), test.post.hash);
 }
 
-generate_official_tests_from_folder!(
-    "./tests/official_tests/tests/GeneralStateTests/VMTests/vmArithmeticTest"
-);
+// generate_official_tests_from_folder!(
+//     "./tests/official_tests/tests/GeneralStateTests/VMTests/vmArithmeticTest"
+// );
 
 // generate_official_tests_from_folder!(
 //     "./tests/official_tests/tests/GeneralStateTests/stRandom"
 // );
 
-// generate_official_tests_from_file!(
-//     "./tests/official_tests/tests/GeneralStateTests/VMTests/vmArithmeticTest/mul.json"
-// );
+generate_official_tests_from_file!(
+    "./tests/official_tests/tests/GeneralStateTests/VMTests/vmArithmeticTest/mul.json"
+);

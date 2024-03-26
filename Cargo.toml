@@ -1,3 +1,4 @@
+workspace = { members = ["util"] }
 [package]
 name = "ethereum_evm"
 version = "0.1.0"
@@ -6,6 +7,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+test_gen = { path = "./test_gen" }
+util = { path = "./util" }
 array-init = "2.1.0"
 ethereum = "0.15.0"
 primitive-types = { version = "0.12", features = ["rlp", "serde"] }
@@ -15,7 +18,8 @@ rlp = "0.5.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha3 = "0.10.8"
-test_gen = { path = "./test_gen" }
 thiserror = "1.0.58"
 num256 = "0.5.1"
 lazy_static = "1.4.0"
+phf = {version = "0.11.2", features = ["macros"]}
+quote = "1.0.35"

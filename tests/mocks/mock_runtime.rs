@@ -4,6 +4,7 @@ use primitive_types::{H160, H256, U256};
 use rlp::{Encodable, RlpStream};
 use std::collections::BTreeMap;
 use std::collections::HashSet;
+use std::mem;
 
 #[derive(Clone)]
 pub struct Contract {
@@ -19,6 +20,10 @@ pub struct Contract {
     pub hot_keys: HashSet<U256>,
 }
 
+pub struct Context {
+    pub prev_context: Option<Box<Context>>,
+    pub contracts: BTreeMap<U256, Contract>,
+}
 pub struct MockRuntime {
     pub block_hashes: BTreeMap<U256, H256>,
     pub block_number: U256,
@@ -30,7 +35,7 @@ pub struct MockRuntime {
     pub block_base_fee_per_gas: U256,
     pub chain_id: U256,
     pub contracts: BTreeMap<U256, Contract>,
-    pub contexts: Vec<BTreeMap<U256, Contract>>,
+    pub current_context: Option<Box<Context>>,
 }
 
 #[derive(Debug)]
@@ -134,121 +139,203 @@ impl Runtime for MockRuntime {
     // TODO add default values if address is not found
     // Context state
     fn balance(&self, address: U256) -> U256 {
-        self.last_context()[&address].balance
+        self.current_context.as_ref().unwrap().contracts[&address].balance
     }
     fn code_size(&self, address: U256) -> U256 {
-        self.last_context()[&address].code_size
+        self.current_context.as_ref().unwrap().contracts[&address].code_size
     }
     fn code_hash(&self, address: U256) -> H256 {
-        self.last_context()[&address].code_hash
+        self.current_context.as_ref().unwrap().contracts[&address].code_hash
     }
     fn nonce(&self, address: U256) -> U256 {
-        self.last_context()[&address].nonce
+        self.current_context.as_ref().unwrap().contracts[&address].nonce
     }
     fn code(&self, address: U256) -> Vec<u8> {
-        self.last_context()[&address].code.clone()
+        self.current_context.as_ref().unwrap().contracts[&address]
+            .code
+            .clone()
     }
     fn exists(&self, address: U256) -> bool {
-        self.last_context().contains_key(&address)
+        self.current_context
+            .as_ref()
+            .unwrap()
+            .contracts
+            .contains_key(&address)
     }
     fn storage(&mut self, address: U256) -> &BTreeMap<H256, H256> {
-        &mut self.last_context().get_mut(&address).unwrap().storage
-    }
-    fn original_storage(&mut self, address: U256) -> &BTreeMap<H256, H256> {
         &mut self
-            .penultimate_context()
+            .current_context
+            .as_mut()
+            .unwrap()
+            .contracts
             .get_mut(&address)
             .unwrap()
             .storage
+    }
+    fn original_storage(&mut self, address: U256) -> &BTreeMap<H256, H256> {
+        &self.contracts[&address].storage
     }
 
     // TODO add logic if address is not found
     // Modify Contract State (Should always be valid addresses)
     fn is_deleted(&self, address: U256) -> bool {
-        self.last_context()[&address].is_deleted
+        self.current_context.as_ref().unwrap().contracts[&address].is_deleted
     }
     fn is_cold(&self, address: U256) -> bool {
-        self.last_context()[&address].is_cold
+        self.current_context.as_ref().unwrap().contracts[&address].is_cold
     }
     fn is_cold_index(&self, address: U256, index: U256) -> bool {
-        !self.last_context()[&address].hot_keys.contains(&index)
+        !self.current_context.as_ref().unwrap().contracts[&address]
+            .hot_keys
+            .contains(&index)
     }
     fn mark_hot(&mut self, address: U256) {
-        self.last_context().get_mut(&address).unwrap().is_cold = false;
+        self.current_context
+            .as_mut()
+            .unwrap()
+            .contracts
+            .get_mut(&address)
+            .unwrap()
+            .is_cold = false;
     }
     fn mark_hot_index(&mut self, address: U256, index: U256) {
-        self.last_context()
+        self.current_context
+            .as_mut()
+            .unwrap()
+            .contracts
             .get_mut(&address)
             .unwrap()
             .hot_keys
             .insert(index);
     }
     fn set_storage(&mut self, address: U256, index: U256, value: H256) {
-        self.last_context()
+        self.current_context
+            .as_mut()
+            .unwrap()
+            .contracts
             .get_mut(&address)
             .unwrap()
             .storage
             .insert(u256_to_h256(index), value);
+        for (address, contract) in &self.current_context.as_ref().unwrap().contracts {
+            println!("Storage: {:?}", contract.storage);
+        }
     }
     fn mark_delete(&mut self, address: U256) {
-        self.last_context().get_mut(&address).unwrap().is_deleted = true;
+        self.current_context
+            .as_mut()
+            .unwrap()
+            .contracts
+            .get_mut(&address)
+            .unwrap()
+            .is_deleted = true;
     }
     fn reset_storage(&mut self, address: U256) {
-        self.last_context().get_mut(&address).unwrap().storage = BTreeMap::new();
+        self.current_context
+            .as_mut()
+            .unwrap()
+            .contracts
+            .get_mut(&address)
+            .unwrap()
+            .storage = BTreeMap::new();
     }
     fn set_code(&mut self, address: U256, code: Vec<u8>) {
-        self.last_context().get_mut(&address).unwrap().code = code;
+        self.current_context
+            .as_mut()
+            .unwrap()
+            .contracts
+            .get_mut(&address)
+            .unwrap()
+            .code = code;
     }
     fn reset_balance(&mut self, address: U256) {
-        self.last_context().get_mut(&address).unwrap().balance = U256::from(0 as u64);
+        self.current_context
+            .as_mut()
+            .unwrap()
+            .contracts
+            .get_mut(&address)
+            .unwrap()
+            .balance = U256::from(0 as u64);
     }
     fn deposit(&mut self, target: U256, value: U256) {
-        self.last_context().get_mut(&target).unwrap().balance += value;
+        self.current_context
+            .as_mut()
+            .unwrap()
+            .contracts
+            .get_mut(&target)
+            .unwrap()
+            .balance += value;
     }
     fn withdrawal(&mut self, source: U256, value: U256) {
-        self.last_context().get_mut(&source).unwrap().balance -= value;
+        self.current_context
+            .as_mut()
+            .unwrap()
+            .contracts
+            .get_mut(&source)
+            .unwrap()
+            .balance -= value;
     }
     fn increase_nonce(&mut self, address: U256) {
-        self.last_context().get_mut(&address).unwrap().nonce += U256::from(1);
+        self.current_context
+            .as_mut()
+            .unwrap()
+            .contracts
+            .get_mut(&address)
+            .unwrap()
+            .nonce += U256::from(1);
     }
 
     // Modify context stack
     fn add_context(&mut self) {
-        match self.contexts.last() {
+        println!("Adding Context");
+        match mem::take(&mut self.current_context) {
             Some(context) => {
-                self.contexts.push(context.clone());
+                self.current_context = Some(Box::new(Context {
+                    contracts: context.contracts.clone(),
+                    prev_context: Some(context)
+                }));
             }
             None => {
-                self.contexts.push(self.contracts.clone());
+                self.current_context = Some(Box::new(Context {
+                    contracts: self.contracts.clone(),
+                    prev_context: None,
+                }));
             }
-        }
+        };
     }
     fn merge_context(&mut self) {
-        // TODO
+        println!("Merging Context");
+
+        match mem::take(&mut self.current_context) {
+            Some(mut context) => {
+                for (address, contract) in &context.contracts {
+                    println!("Storage: {:?}", contract.storage);
+                }
+                match &mut context.prev_context {
+                    Some(prev_context) => {
+                        prev_context.contracts = context.contracts;
+                    }
+                    None => {
+                        self.contracts = context.contracts;
+                    }
+                }
+                self.current_context = context.prev_context;
+            }
+            None => {
+                self.current_context = None;
+            }
+        }
     }
     fn revert_context(&mut self) {
-        // TODO need to know whether to maintain hot cold of contracts?
-        match self.contexts.last() {
-            Some(_) => {
-                self.contexts.pop();
+        match mem::take(&mut self.current_context) {
+            Some(context) => {
+                self.current_context = context.prev_context;
             }
-            None => {}
+            None => {
+                self.current_context = None;
+            }
         }
     }
 }
 
-impl MockRuntime {
-    fn last_context(&mut self) -> &BTreeMap<U256, Contract> {
-        match self.contexts.last() {
-            Some(context) => context,
-            None => &self.contracts,
-        }
-    }
-
-    fn penultimate_context(&mut self) -> &BTreeMap<U256, Contract> {
-        match self.contexts.get(self.contexts.len() - 2) {
-            Some(context) => context,
-            None => &self.contracts,
-        }
-    }
-}
+impl MockRuntime {}
