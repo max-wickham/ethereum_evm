@@ -1,7 +1,7 @@
 use ethereum_evm::{
     evm_logic::evm::EVMContext,
     runtime::Runtime,
-    util::{keccak256, u256_to_h256},
+    evm_logic::util::{keccak256, u256_to_h256},
 };
 use primitive_types::U256;
 use std::{
@@ -51,12 +51,12 @@ pub fn run_test(test: &TestState, debug: bool) {
                 contracts.insert(
                     *address,
                     Contract {
-                        balance: contract.balance,
+                        balance: contract.balance(),
                         code_size: U256::from(contract.code.0.len() as u64),
                         code_hash: keccak256(&contract.code.0),
                         code: contract.code.0.clone(),
-                        nonce: contract.nonce,
-                        storage: contract.storage.clone(),
+                        nonce: contract.nonce(),
+                        storage: contract.storage().clone(),
                         is_deleted: false,
                         is_cold: true,
                         hot_keys: HashSet::new(),
@@ -124,9 +124,9 @@ pub fn run_test(test: &TestState, debug: bool) {
     assert_eq!(runtime.state_root_hash(), test.post.hash);
 }
 
-generate_official_tests_from_folder!(
-    "./tests/official_tests/tests/GeneralStateTests/stMemoryTest"
-);
+// generate_official_tests_from_folder!(
+//     "./tests/official_tests/tests/GeneralStateTests/stMemoryTest"
+// );
 
 // generate_official_tests_from_folder!(
 //     "./tests/official_tests/tests/GeneralStateTests/stMemoryTest"
@@ -136,6 +136,6 @@ generate_official_tests_from_folder!(
 //     "./tests/official_tests/tests/GeneralStateTests/stRandom"
 // );
 
-// generate_official_tests_from_file!(
-//     "./tests/official_tests/tests/GeneralStateTests/stMemoryTest/mem32kb-1.json"
-// );
+generate_official_tests_from_file!(
+    "./tests/official_tests/tests/GeneralStateTests/stMemoryTest/buffer.json"
+);

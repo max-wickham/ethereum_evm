@@ -2,7 +2,7 @@ use std::ops::Index;
 
 use primitive_types::U256;
 
-use crate::{gas_calculator::GasRecorder, util::u256_to_array};
+use crate::evm_logic::{gas_calculator::GasRecorder, util::u256_to_array};
 
 pub struct Memory {
     pub bytes: Vec<u8>,
@@ -60,8 +60,11 @@ impl Memory {
     }
 
     #[inline]
-    pub fn read(&self, address: usize) -> U256 {
+    pub fn read(&mut self, address: usize, gas_recorder: &mut GasRecorder) -> U256 {
         // TODO add memory expansion cost?
+        if address > {if self.max_index > 32 {self.max_index - 32} else {self.max_index}} {
+            self.expand(address,gas_recorder);
+        }
         let bytes_to_copy = &self.bytes[address..address + 32];
         let mut bytes = [0; 32];
         bytes.copy_from_slice(bytes_to_copy);
@@ -70,7 +73,7 @@ impl Memory {
 
     #[inline]
     pub fn write(&mut self, address: usize, value: U256, gas_recorder: &mut GasRecorder) {
-        if address > self.max_index {
+        if address > {if self.max_index > 32 {self.max_index - 32} else {self.max_index}} {
             self.expand(address,gas_recorder);
         }
         let index = address;
@@ -80,25 +83,32 @@ impl Memory {
 
     #[inline]
     pub fn write_u8(&mut self, address: usize, value: u8, gas_recorder: &mut GasRecorder) {
-        if address > self.max_index {
+        if address > {if self.max_index > 1 {self.max_index - 1} else {self.max_index}} {
             self.expand(address, gas_recorder);
         }
         self.bytes[address] = value;
     }
 
     #[inline]
-    pub fn read_bytes(&self, address: usize, length: usize) -> Vec<u8> {
+    pub fn read_bytes(&mut self, address: usize, length: usize, gas_recorder: &mut GasRecorder) -> Vec<u8> {
+        if address > {if self.max_index > length {self.max_index - length} else {self.max_index}} {
+            self.expand(address,gas_recorder);
+        }
         self.bytes[address..(address + length)].to_vec()
     }
 
     #[inline]
     fn expand(&mut self, new_max_address: usize, gas_recorder: &mut GasRecorder) {
+        if new_max_address > 10000000 {
+            panic!("Memory expansion error");
+        }
         if new_max_address == 0 {
             return;
         }
         let new_max_address= new_max_address + 32;
         self.max_index = new_max_address;
         gas_recorder.record_memory_usage(self.bytes.len(), new_max_address);
+        println!("Max Address : {}", new_max_address);
         self.bytes.resize(new_max_address, 0);
     }
 }

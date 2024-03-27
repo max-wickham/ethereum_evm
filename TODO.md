@@ -1,8 +1,14 @@
 # TODO
 
-- [_] Replace closure with macro
-- [_] Move entire decode step into inline function
-- [_] Restructure code into a folder system
+- [_] Get Memory Buffer tests to work
+    - Check CODECOPY
+    - Check CALLDATACOPY
+    - Check initial costs
+- [_] Only pass JSON once in tests, (maybe pass in the proc macro and then directly insert in the code)
+- [_] Replace macro with method in decoder?
+- [x] Replace closure with macro
+- [x] Move entire decode step into inline function
+- [?] Restructure code into a folder system
 - [_] More specific error handling
 - [x] Create better gas tracking, (especially for memory)
     - [x] Created gas tracker
@@ -10,7 +16,7 @@
     - [x] Apply gas tracker to all other operations
 - [?] Implement Reverts if failure (especially in calls)
 - [_] Check the failure behavior of every instruction
-- [_] Create a helper proc macro that creates a map from opcode to string value
+- [x] Create a helper proc macro that creates a map from opcode to string value
 
 - [_] Remove assembler
 - [_] Fix test proc to auto detect if a file or folder and auto search sub directories
@@ -29,14 +35,13 @@
 - [x] Implement hash of state for mock runtime
 
 - [x] Finish implementing call, (without gas calculations)
-- [_] Define tests for instructions not using runtime
+- [N] Define tests for instructions not using runtime
     - [x] Create Proc macro to define tests in json
-    - [_] Create tests for all basic arithmetic instructions
 - [x] Add variable gas calculations
 - [x] Create test implementing of Runtime
 - [x] Revert only current context, (not also if a call fails)
 - [x] Handle not enough values on stack
-- [_] Define test for instructions using runtime
+- [N] Define test for instructions using runtime
 - [_] Implement delegate call and create 2
 - [_] Implement Create
 - [_] Define tests for mem and stack

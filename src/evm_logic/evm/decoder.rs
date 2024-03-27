@@ -2,7 +2,7 @@ use crate::bytecode_spec::opcodes;
 use crate::evm_logic::evm::{EVMContext, Message};
 use crate::runtime::Runtime;
 use crate::state::memory::Memory;
-use crate::util::{
+use crate::evm_logic::util::{
     self, h256_to_u256, int256_to_uint256, keccak256, u256_to_h256, u256_to_uint256,
     uint256_to_int256, MAX_UINT256, MAX_UINT256_COMPLEMENT, ZERO,
 };
@@ -127,8 +127,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
             match $opcode {
                 $(
                     $pat => {
-                        #[allow(unreachable_code)]
-                        #[allow(unused_variables)]{
+                        #[allow(unreachable_code,unused_variables)]{
                         {
                             if debug {
                                 print!("{}", "\t".repeat(evm.nested_index as usize));
@@ -404,7 +403,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
 
         opcodes::KECCAK256 => {
             let (offset, length) = (pop!().as_usize(), pop!().as_usize());
-            let bytes = evm.memory.read_bytes(offset, length);
+            let bytes = evm.memory.read_bytes(offset, length, &mut evm.gas_recorder);
             evm.stack.push(U256::from(keccak256(&bytes).as_bytes()));
             // As of the Ethereum Yellow Paper (EIP-62), the gas cost for the KECCAK256 instruction is 30 gas plus an additional 6 gas for each 256-bit word (or part thereof) of input data.
             evm.gas_recorder.record_gas(30 + (length.div_ceil(256) as u64 * 6) as usize);
@@ -440,7 +439,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         opcodes::CALLDATALOAD => {
             // TODO fix
             let index = pop!().as_u64() as usize;
-            evm.stack.push(evm.message.data.read(index));
+            evm.stack.push(evm.message.data.read(index, &mut evm.gas_recorder));
             evm.gas_recorder.record_gas(3);
         },
 
@@ -585,7 +584,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
 
         opcodes::MLOAD => {
             let offset = pop!().as_usize();
-            evm.stack.push(evm.memory.read(offset));
+            evm.stack.push(evm.memory.read(offset, &mut evm.gas_recorder));
             evm.gas_recorder.record_gas(3);
         },
 
@@ -650,7 +649,6 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
             evm.gas_recorder.record_gas(8);
         },
 
-
         opcodes::JUMPI => {
             let (destination, condition) = (pop!().as_usize(), pop!());
             if !condition.eq(&U256::zero()) {
@@ -679,10 +677,11 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         },
 
         opcodes::PUSH_1..=opcodes::PUSH_32 => {
+            // Would technically be slightly faster without this (branch for each case) but probably a negligible difference
             let push_number = opcode - opcodes::PUSH_1 + 1;
             let bytes = evm
                 .program
-                .read_bytes(evm.program_counter + 1, push_number as usize);
+                .read_bytes(evm.program_counter + 1, push_number as usize, &mut evm.gas_recorder);
             evm.program_counter += push_number as usize;
             evm.stack.push_bytes(&bytes);
             evm.gas_recorder.record_gas(3);
@@ -743,7 +742,9 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
     });
 
     evm.program_counter += 1;
-
+    if evm.program_counter > 1000000 || evm.nested_index > 1024 {
+        return false;
+    }
     if evm.check_gas_usage() {
         // TODO add revert logic etc.
         return false;

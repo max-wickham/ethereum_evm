@@ -2,7 +2,7 @@
 
 use primitive_types::U256;
 
-use crate::util::u256_to_array;
+use crate::evm_logic::util::u256_to_array;
 
 const STACK_SIZE: usize = 1024* 32;
 
