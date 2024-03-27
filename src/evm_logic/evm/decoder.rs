@@ -1,11 +1,11 @@
 use crate::bytecode_spec::opcodes;
 use crate::evm_logic::evm::{EVMContext, Message};
-use crate::runtime::Runtime;
-use crate::state::memory::Memory;
 use crate::evm_logic::util::{
     self, h256_to_u256, int256_to_uint256, keccak256, u256_to_h256, u256_to_uint256,
-    uint256_to_int256, MAX_UINT256, MAX_UINT256_COMPLEMENT, ZERO,
+    uint256_to_int256, MAX_UINT256, MAX_UINT256_COMPLEMENT, ZERO, ZERO_H256,
 };
+use crate::runtime::Runtime;
+use crate::state::memory::Memory;
 
 use num256::Uint256;
 use primitive_types::U256;
@@ -16,7 +16,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
     /*
     Run the next instruction, adjusting gas usage and return a bool that is true if okay, false if exception
     */
-
+    // Should be put into a separate macros file
     // Not a function as need to be able to return from caller function
     macro_rules! pop {
         ($($input:tt)*) => {{
@@ -68,17 +68,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
                 },
                 Message {
                     caller: evm.contract_address,
-                    data: {
-                        let mut memory: Memory = Memory::new();
-                        memory.copy_from(
-                            &mut evm.memory,
-                            args_offset,
-                            0,
-                            args_size,
-                            &mut evm.gas_recorder,
-                        );
-                        memory
-                    },
+                    data: evm.memory.bytes[args_offset..args_offset + args_size].to_vec(),
                     value: value,
                 },
                 gas,
@@ -151,6 +141,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
     debug_match!(opcode, {
 
         opcodes::STOP => {
+            println!("STOP");
             evm.stopped = true;
             return true;
         },
@@ -403,10 +394,11 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
 
         opcodes::KECCAK256 => {
             let (offset, length) = (pop!().as_usize(), pop!().as_usize());
+            println!("offset: {}, length: {}", offset, length);
             let bytes = evm.memory.read_bytes(offset, length, &mut evm.gas_recorder);
             evm.stack.push(U256::from(keccak256(&bytes).as_bytes()));
             // As of the Ethereum Yellow Paper (EIP-62), the gas cost for the KECCAK256 instruction is 30 gas plus an additional 6 gas for each 256-bit word (or part thereof) of input data.
-            evm.gas_recorder.record_gas(30 + (length.div_ceil(256) as u64 * 6) as usize);
+            evm.gas_recorder.record_gas(30 + (length.div_ceil(32) as u64 * 6) as usize);
         },
 
         opcodes::ADDRESS => {
@@ -439,7 +431,17 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         opcodes::CALLDATALOAD => {
             // TODO fix
             let index = pop!().as_u64() as usize;
-            evm.stack.push(evm.message.data.read(index, &mut evm.gas_recorder));
+            if index > evm.message.data.len() - 32 {
+                evm.stack.push_bytes(
+                    &{
+                        let mut bytes = evm.message.data.clone();
+                        bytes.append(&mut vec![0; 32 - (evm.message.data.len() - index)]);
+                        bytes
+                    }
+                );
+            } else {
+                evm.stack.push_bytes(&evm.message.data[index..index + 32].to_vec());
+            }
             evm.gas_recorder.record_gas(3);
         },
 
@@ -449,14 +451,15 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         },
 
         opcodes::CALLDATACOPY => {
+            // TODO fix
             let (dest_offset, offset, length) = (
                 pop!().as_usize(),
                 pop!().as_usize(),
                 pop!().as_usize(),
             );
             // let current_memory_usage = evm.memory.memory_cost;
-                evm.memory
-                    .copy_from(&mut evm.message.data, offset, dest_offset, length, &mut evm.gas_recorder);
+                // evm.memory
+                //     .copy_from(&mut evm.message.data, offset, dest_offset, length, &mut evm.gas_recorder);
                 // let new_usage = evm.memory.memory_cost;
                 // evm.gas_usage +=
                 //     3 + 3 * (length as u64 + 31 / 32) + (new_usage - current_memory_usage).as_u64();
@@ -609,7 +612,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
                 runtime.mark_hot_index(evm.contract_address, key);
             }
             evm.stack
-                .push(h256_to_u256(runtime.storage(evm.contract_address)[&u256_to_h256(key)]));
+                .push(h256_to_u256(runtime.read_storage(evm.contract_address, key)));
             // evm.gas_usage += if runtime.is_hot(evm.contract_address) {
             //     100
             // } else {
@@ -620,26 +623,50 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
 
         opcodes::SSTORE => {
             let (key, value) = (pop!(), pop!());
+            println!("ket: {}, value: {}", key, value);
             if !runtime.is_hot_index(evm.contract_address, key){
                 evm.gas_recorder.record_gas(2100);
                 runtime.mark_hot_index(evm.contract_address, key);
             }
-            let base_dynamic_gas;
-            if !runtime.storage(evm.contract_address).contains_key(&u256_to_h256(key)) && value.eq(&U256::zero())  {
-                base_dynamic_gas = 100;
-            }
-            else {
-                base_dynamic_gas = if (runtime.storage(evm.contract_address).contains_key(&u256_to_h256(key))
-                    && !h256_to_u256(runtime.storage(evm.contract_address)[&u256_to_h256(key)]).eq(&U256::zero())) || value.eq(&U256::zero())
-                {
-                    5000
-                } else {
-                    20000
-                };
-                runtime.set_storage(evm.contract_address, key, u256_to_h256(value));
-            }
+            let (v_org, v_cur, v_new) = (
+                runtime.read_original_storage(evm.contract_address,key),
+                runtime.read_storage(evm.contract_address,key),
+                u256_to_h256(value),
+            );
+            println!("v_org: {}, v_cur: {}, v_new: {}", v_org, v_cur, v_new);
+            let dynamic_gas = if (v_cur.eq(&v_new) | !v_org.eq(&v_cur)) {
+                 100
+            } else if v_org.eq(&ZERO_H256) {
+                 20000
+            } else {
+                2900
+            };
+            let refund = if !v_org.eq(&ZERO_H256) && v_new.eq(&ZERO_H256) {
+                println!("Refund");
+                15000
+            } else {
+                0
+            };
+            runtime.set_storage(evm.contract_address, key, u256_to_h256(value));
+            evm.gas_recorder.record_gas(dynamic_gas);
+            evm.gas_recorder.subtract_gas(refund);
+            // let base_dynamic_gas;
+            // if !runtime.storage(evm.contract_address).contains_key(&u256_to_h256(key)) && value.eq(&U256::zero())  {
+            //     println!("Deleting key");
+            //     base_dynamic_gas = 100;
+            // }
+            // else {
+            //     base_dynamic_gas = if (runtime.storage(evm.contract_address).contains_key(&u256_to_h256(key))
+            //         && !h256_to_u256(runtime.storage(evm.contract_address)[&u256_to_h256(key)]).eq(&U256::zero())) || value.eq(&U256::zero())
+            //     {
+            //         5000
+            //     } else {
+            //         20000
+            //     };
+            //     runtime.set_storage(evm.contract_address, key, u256_to_h256(value));
+            // }
             // TODO already written slot should always be 100
-            evm.gas_recorder.record_gas(base_dynamic_gas);
+            // evm.gas_recorder.record_gas(base_dynamic_gas);
         },
 
         opcodes::JUMP => {

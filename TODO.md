@@ -1,9 +1,17 @@
 # TODO
 
+- [_] Fix Calldata load, Code load etc.
+- [_] Do general clean up
+    - [_] Better error handling
+    - [_] Refactor where macros and functions are
+    - [_] Remove lambdas
+    - [_] Move costs into a config
+    - [_] Separate gas cost logic from main logic
 - [_] Get Memory Buffer tests to work
     - Check CODECOPY
     - Check CALLDATACOPY
     - Check initial costs
+- [_] Make gas refunds handle reverts
 - [_] Only pass JSON once in tests, (maybe pass in the proc macro and then directly insert in the code)
 - [_] Replace macro with method in decoder?
 - [x] Replace closure with macro

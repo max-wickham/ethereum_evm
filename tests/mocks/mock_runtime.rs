@@ -1,5 +1,6 @@
 use ethereum_evm::runtime::Runtime;
 use ethereum_evm::evm_logic::util::{h256_to_u256, keccak256, u256_to_h256};
+use hex::encode;
 use primitive_types::{H160, H256, U256};
 use rlp::{Encodable, RlpStream};
 use std::collections::BTreeMap;
@@ -12,7 +13,7 @@ This implementation is extremely inefficient. It is only for running test cases.
 !!!
 */
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Contract {
     pub balance: U256,
     pub code_size: U256,
@@ -26,6 +27,7 @@ pub struct Contract {
     pub hot_keys: HashSet<U256>,
 }
 
+#[derive(Debug)]
 pub struct Context {
     pub prev_context: Option<Box<Context>>,
     pub contracts: BTreeMap<U256, Contract>,
@@ -93,6 +95,7 @@ impl MockRuntime {
                             contract
                                 .storage
                                 .iter()
+                                .filter(|(_,value)| {**value != H256::zero()})
                                 .map(|(key, value)| (key, rlp::encode(&h256_to_u256(*value)))),
                         ),
                         code_hash: keccak256(&contract.code),
@@ -100,14 +103,14 @@ impl MockRuntime {
                         balance: contract.balance,
                         code_version: U256::zero(),
                     });
-                    // println!("encoded_contract: {:x?}", encode(keccak256(&encoded_contract.to_vec())));
+                    println!("encoded_contract: {:x?}", encode(keccak256(&encoded_contract.to_vec())));
                     encoded_contract
                 })
             })
             .collect::<Vec<_>>();
         // println!("tree: {:x?}", &tree);
         let x = ethereum::util::sec_trie_root(tree);
-        // println!("state_root_hash: {:x?}", x);
+        println!("state_root_hash: {:x?}", x);
         x
     }
 }
@@ -168,18 +171,16 @@ impl Runtime for MockRuntime {
             .contracts
             .contains_key(&address)
     }
-    fn storage(&mut self, address: U256) -> &BTreeMap<H256, H256> {
-        &mut self
-            .current_context
-            .as_mut()
-            .unwrap()
-            .contracts
-            .get_mut(&address)
-            .unwrap()
-            .storage
+
+    fn read_original_storage(&self, address: U256, index: U256) -> H256 {
+        self.contracts[&address].storage.get(&u256_to_h256(index)).unwrap_or(&H256::zero()).clone()
     }
-    fn original_storage(&mut self, address: U256) -> &BTreeMap<H256, H256> {
-        &self.contracts[&address].storage
+    fn read_storage(&self, address: U256, index: U256) -> H256 {
+        self.current_context.as_ref().unwrap().contracts[&address]
+            .storage
+            .get(&u256_to_h256(index))
+            .unwrap_or(&H256::zero())
+            .clone()
     }
 
     // TODO add logic if address is not found

@@ -222,8 +222,8 @@ pub fn generate_official_tests_from_file(input: TokenStream) -> TokenStream {
                 panic!("Expected a JSON object at the root");
             }
         }
-
         for i in 0..num_tests {
+        // for i in 0..10 {
             let test_name = Ident::new(
                 format!("run_test_{}", i).as_str(),
                 proc_macro2::Span::call_site(),
@@ -232,7 +232,7 @@ pub fn generate_official_tests_from_file(input: TokenStream) -> TokenStream {
                 #[test]
                 fn #test_name() {
                     let filename = #file_name;
-                    run_test_file(filename.to_string(), true, #i);
+                    run_test_file(filename.to_string(), true, #i  as usize);
                 }
             });
         }

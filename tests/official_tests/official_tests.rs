@@ -62,6 +62,7 @@ pub fn run_test(test: &TestState, debug: bool) {
                         hot_keys: HashSet::new(),
                     },
                 );
+                println!("Storage: {:?}",contract.storage().clone());
             }
             contracts.insert(
                 test.env.current_coinbase,

@@ -39,8 +39,10 @@ impl<'de> Deserialize<'de> for WrappedU256 {
 
                 let mut hash = [0u8; 32];
                 let num_bytes_to_copy = hash_bytes.len().min(32);
-                hash[..num_bytes_to_copy].copy_from_slice(&hash_bytes[..num_bytes_to_copy]);
-
+                // println!("num_bytes_to_copy: {}", num_bytes_to_copy);
+                // println!("hash_bytes: {:x?}", hash_bytes);
+                hash[32 - num_bytes_to_copy..32].copy_from_slice(&hash_bytes);
+                // println!("hash: {:x?}", hash);
                 Ok(WrappedU256(U256::from(hash)))
             }
         }
@@ -167,7 +169,7 @@ pub struct TestContract {
 
 impl TestContract{
     pub fn storage(&self) -> BTreeMap<H256, H256> {
-        self.storage.iter().map(|(k, v)| (u256_to_h256(k.0), u256_to_h256(k.0))).collect()
+        self.storage.iter().map(|(k, v)| (u256_to_h256(k.0), u256_to_h256(v.0))).collect()
     }
 
     pub fn nonce(&self) -> U256 {

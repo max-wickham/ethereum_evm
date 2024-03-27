@@ -16,7 +16,7 @@ struct Transaction {
 struct Message {
     pub caller: U256,
     pub value: U256,
-    pub data: Memory,
+    pub data: Vec<u8>,
 }
 
 pub struct EVMContext {
@@ -51,7 +51,7 @@ impl EVMContext {
         let message = Message {
             caller: contract,
             value: value,
-            data: Memory::from(data, &mut GasRecorder { gas_usage: 0 }),
+            data: data,
         };
         let transaction = Transaction {
             origin: origin,
@@ -68,7 +68,7 @@ impl EVMContext {
         );
         evm.gas_recorder.record_gas(21000);
         evm.execute_program(runtime, debug);
-        evm.gas_recorder.gas_usage
+        evm.gas_recorder.gas_usage - usize::min(evm.gas_recorder.gas_refunds, evm.gas_recorder.gas_usage / 2)
     }
 
     #[inline]
@@ -84,7 +84,7 @@ impl EVMContext {
         EVMContext {
             stack: Stack::new(),
             memory: Memory::new(),
-            program: Memory::from(code, &mut GasRecorder { gas_usage: 0 }),
+            program: Memory::from(code, &mut GasRecorder { gas_usage: 0, gas_refunds: 0 }),
             program_counter: 0,
             contract_address: address,
             // TODO remove need to clone here
@@ -96,7 +96,7 @@ impl EVMContext {
             gas_price: gas_price,
             stopped: false,
             nested_index: nested_index,
-            gas_recorder: GasRecorder { gas_usage: 0 },
+            gas_recorder: GasRecorder { gas_usage: 0 , gas_refunds: 0},
         }
     }
 
@@ -105,13 +105,14 @@ impl EVMContext {
         runtime.add_context();
 
         let result = || -> bool {
-            println!("Message data size : {}", self.message.data.bytes.len());
-            if self.message.data.bytes.len() != 0{
+            println!("Message data size : {:?}", self.message.data);
+            println!("Message data size : {:?}", self.message.data.len());
+            if self.message.data.len() != 0{
                 self.gas_recorder
-                .record_gas(call_data_gas_cost(&self.message.data.bytes));
+                .record_gas(call_data_gas_cost(&self.message.data));
             }
             if debug {
-                println!("Call Data Gas Cost: {}", self.gas_recorder.gas_usage);
+                println!("Call Data Gas Cost: {:x}", self.gas_recorder.gas_usage);
             }
             while !self.stopped {
                 let result = self.execute_next_instruction(runtime, debug);
@@ -142,7 +143,7 @@ impl EVMContext {
     }
     #[inline]
     fn check_gas_usage(&self) -> bool {
-        self.gas_recorder.gas_usage > self.gas_input as usize
+        (self.gas_recorder.gas_usage - self.gas_recorder.gas_refunds) > self.gas_input as usize
     }
 }
 
