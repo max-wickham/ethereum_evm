@@ -43,14 +43,68 @@ impl Memory {
         length: usize,
         gas_recorder: &mut GasRecorder,
     ) {
-        if write_address > self.max_index {
-            self.expand(write_address, gas_recorder)
+        println!("Write addresses: {}", write_address);
+        if write_address + length > self.max_index {
+            println!("Expanding memory");
+            println!("memory bytes length: {}", memory.bytes.len());
+            println!("read address: {}", read_address);
+            println!("length: {}", length);
+            println!("max index: {}", self.max_index);
+            self.expand(write_address + length, gas_recorder)
         }
         if memory.bytes.len() < read_address + length {
             memory.expand(read_address + length, gas_recorder)
         }
         self.bytes[write_address..write_address + length]
             .copy_from_slice(&memory.bytes[read_address..(read_address + length)]);
+    }
+
+    #[inline]
+    pub fn copy_from_with_local_cost(
+        &mut self,
+        memory: &mut Memory,
+        read_address: usize,
+        write_address: usize,
+        length: usize,
+        gas_recorder: &mut GasRecorder,
+    ) {
+        println!("Write addresses: {}", write_address);
+        if write_address + length > self.max_index {
+            println!("Expanding memory");
+            println!("memory bytes length: {}", memory.bytes.len());
+            println!("read address: {}", read_address);
+            println!("length: {}", length);
+            println!("max index: {}", self.max_index);
+            self.expand(write_address + length, &mut GasRecorder{gas_usage: 0, gas_refunds: 0});
+        }
+        if memory.bytes.len() < read_address + length {
+            memory.expand(read_address + length, gas_recorder)
+        }
+        self.bytes[write_address..write_address + length]
+            .copy_from_slice(&memory.bytes[read_address..(read_address + length)]);
+    }
+
+    #[inline]
+    pub fn copy_from_bytes(
+        &mut self,
+        bytes: &Vec<u8>,
+        read_address: usize,
+        write_address: usize,
+        length: usize,
+        gas_recorder: &mut GasRecorder,
+    ) {
+        if write_address + length > self.max_index {
+            self.expand(write_address + length, gas_recorder)
+        }
+        let (mut start_address, mut end_address) = (read_address, read_address + length);
+        if start_address > bytes.len() {
+            start_address = bytes.len();
+        }
+        if end_address > bytes.len() {
+            end_address = bytes.len();
+        }
+        self.bytes[write_address..write_address + (end_address - start_address)]
+            .copy_from_slice(&bytes[start_address..end_address]);
     }
 
     #[inline]
@@ -74,7 +128,7 @@ impl Memory {
     #[inline]
     pub fn write(&mut self, address: usize, value: U256, gas_recorder: &mut GasRecorder) {
         if address > {if self.max_index > 32 {self.max_index - 32} else {self.max_index}} {
-            self.expand(address,gas_recorder);
+            self.expand(address + 32,gas_recorder);
         }
         let index = address;
         let end_index = index + 32;
@@ -103,12 +157,19 @@ impl Memory {
             panic!("Memory expansion error");
         }
         if new_max_address == 0 {
+            println!("New max address is 0");
             return;
         }
-        let new_max_address= new_max_address + 32;
+        println!("Self.butes.len() : {}", self.bytes.len());
+        let mut new_max_address = new_max_address;
+        println!("New max address : {}", new_max_address);
+        // if new_max_address % 32 != 0 {
+            // new_max_address= new_max_address + 32;
+        // }
+        // println!("New max address : {}", new_max_address);
         self.max_index = new_max_address;
         gas_recorder.record_memory_usage(self.bytes.len(), new_max_address);
-        println!("Max Address : {}", new_max_address);
+        // println!("Max Address : {}", new_max_address);
         self.bytes.resize(new_max_address, 0);
     }
 }

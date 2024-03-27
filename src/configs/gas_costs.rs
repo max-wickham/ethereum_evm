@@ -107,12 +107,6 @@ pub enum DynamicCosts {
         len: U256,
     },
     /// Gas cost for `EXTCODECOPY`.
-    ExtCodeCopy {
-        /// True if target has not been previously accessed in this transaction
-        target_is_cold: bool,
-        /// Length.
-        len: U256,
-    },
     Exp {
         /// Power of `EXP`.
         power: U256,
@@ -126,6 +120,13 @@ pub enum DynamicCosts {
         /// True if target has not been previously accessed in this transaction
         target_is_cold: bool,
     },
+    Copy {
+        size_bytes: usize,
+    },
+    ExtCodeCopy {
+        target_is_cold: bool,
+        size_bytes: usize,
+    }
 }
 
 impl DynamicCosts {
@@ -212,6 +213,21 @@ impl DynamicCosts {
                 // bytes_for_u256
                 let bytes = (power.bits() + 7) / 8;
                 static_costs::G_EXP + static_costs::G_EXP_BYTE * bytes as u64
+            }
+
+            DynamicCosts::Copy { size_bytes } => {
+                static_costs::G_VERY_LOW  + static_costs::G_COPY * (size_bytes.div_ceil(32) as u64)
+            }
+
+            DynamicCosts::ExtCodeCopy { target_is_cold, size_bytes } => {
+                println!("size_bytes: {}", size_bytes);
+                println!("size_bytes.div_ceil(32): {}", size_bytes.div_ceil(32) as u64);
+                static_costs::G_COPY * (size_bytes.div_ceil(32) as u64) +
+                if *target_is_cold {
+                    static_costs::G_COLD_ACCOUNT_ACCESS
+                } else {
+                    static_costs::G_WARM_ACCESS
+                }
             }
             _ => 0,
         }

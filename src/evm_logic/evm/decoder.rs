@@ -343,11 +343,14 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
 
         opcodes::CALLDATACOPY => {
             // TODO fix
-            let (dest_offset, offset, length) = (
+            let (dest_offset, offset, size) = (
                 pop!(evm).as_usize(),
                 pop!(evm).as_usize(),
                 pop!(evm).as_usize(),
             );
+            evm.gas_recorder.record_gas(DynamicCosts::Copy { size_bytes: size}.cost());
+            evm.memory
+                .copy_from_bytes(&mut evm.message.data, offset, dest_offset, size, &mut evm.gas_recorder);
         },
 
         opcodes::CODESIZE => {
@@ -356,14 +359,14 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         },
 
         opcodes::CODECOPY => {
-            let (dest_offset, offset, length) = (
+            let (dest_offset, offset, size) = (
                 pop!(evm).as_usize(),
                 pop!(evm).as_usize(),
                 pop!(evm).as_usize(),
             );
-
+            evm.gas_recorder.record_gas(DynamicCosts::Copy { size_bytes: size}.cost());
             evm.memory
-                .copy_from(&mut evm.program, offset, dest_offset, length, &mut evm.gas_recorder);
+                .copy_from(&mut evm.program, offset, dest_offset, size, &mut evm.gas_recorder);
         },
 
         opcodes::GASPRICE => {
@@ -379,18 +382,19 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         },
 
         opcodes::EXTCODECOPY => {
-            let (addr, dest_offset, offset, length) = (
+            let (addr, dest_offset, offset, size) = (
                 pop!(evm),
                 pop!(evm).as_usize(),
                 pop!(evm).as_usize(),
                 pop!(evm).as_usize(),
             );
 
-            evm.memory.copy_from(
-                &mut Memory::from(runtime.code(addr), &mut evm.gas_recorder),
+            evm.gas_recorder.record_gas(DynamicCosts::ExtCodeCopy { target_is_cold: runtime.is_cold(addr), size_bytes: size}.cost());
+            evm.memory.copy_from_bytes(
+                &runtime.code(addr),
                 offset,
                 dest_offset,
-                length,
+                size,
                 &mut evm.gas_recorder
             );
             runtime.mark_hot(addr);
@@ -403,13 +407,14 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         },
 
         opcodes::RETURNDATACOPY => {
-            let (dest_offset, offset, length) = (
+            let (dest_offset, offset, size) = (
                 pop!(evm).as_usize(),
                 pop!(evm).as_usize(),
                 pop!(evm).as_usize(),
             );
+            evm.gas_recorder.record_gas(DynamicCosts::Copy { size_bytes: size}.cost());
             evm.memory
-                .copy_from(&mut evm.last_return_data, offset, dest_offset, length, &mut evm.gas_recorder);
+                .copy_from(&mut evm.last_return_data, offset, dest_offset, size, &mut evm.gas_recorder);
         },
 
         opcodes::EXTCODEHASH => {
@@ -609,7 +614,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         opcodes::RETURN => {
             let (offset, size) = (pop!(evm).as_usize(), pop!(evm).as_usize());
             evm.result.set_length(size);
-            evm.result.copy_from(&mut evm.memory, offset, 0, size, &mut evm.gas_recorder);
+            evm.result.copy_from_with_local_cost(&mut evm.memory, offset, 0, size, &mut evm.gas_recorder);
             evm.stopped = true;
         },
 
