@@ -3,15 +3,16 @@
 - [_] Fix Calldata load, Code load etc.
 - [_] Do general clean up
     - [_] Better error handling
-    - [_] Refactor where macros and functions are
+    - [x] Refactor where macros and functions are
     - [_] Remove lambdas
-    - [_] Move costs into a config
+    - [x] Move costs into a config
     - [_] Separate gas cost logic from main logic
 - [_] Get Memory Buffer tests to work
     - Check CODECOPY
     - Check CALLDATACOPY
     - Check initial costs
 - [_] Make gas refunds handle reverts
+- [_] Change to H256 instead of U256 where needed
 - [_] Only pass JSON once in tests, (maybe pass in the proc macro and then directly insert in the code)
 - [_] Replace macro with method in decoder?
 - [x] Replace closure with macro
@@ -57,4 +58,4 @@
 ## External
 
 - [_] Submit fix for py eth vm, check that the address is hot
-- [_] Submit fix for num256 conversion
+- [_] Submit fix for num256 conversion between signed and unsigned

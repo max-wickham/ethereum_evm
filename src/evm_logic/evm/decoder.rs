@@ -1,4 +1,6 @@
-use crate::bytecode_spec::opcodes;
+use crate::configs::bytecode_spec::opcodes;
+use crate::evm_logic::evm::call::make_call;
+use crate::evm_logic::evm::macros::{debug_match, pop, return_if_false};
 use crate::evm_logic::evm::{EVMContext, Message};
 use crate::evm_logic::util::{
     self, h256_to_u256, int256_to_uint256, keccak256, u256_to_h256, u256_to_uint256,
@@ -18,127 +20,11 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
     */
     // Should be put into a separate macros file
     // Not a function as need to be able to return from caller function
-    macro_rules! pop {
-        ($($input:tt)*) => {{
-            let result = evm.stack.pop();
-            let result = match result {
-                Err(()) => {
-                    return false;
-                }
-
-                Ok(value) => value,
-            };
-            result
-        }};
-    }
-
-    // TODO move into separate function instead of macro
-    macro_rules! make_call {
-        ($maintain_storage:tt) => {{
-            let (mut gas, address, value, args_offset, args_size, ret_offset, ret_size) = (
-                pop!().as_u64(),
-                pop!(),
-                pop!(),
-                pop!().as_usize(),
-                pop!().as_usize(),
-                pop!().as_usize(),
-                pop!().as_usize(),
-            );
-            let code: Vec<u8> = runtime.code(address);
-            if !value.eq(&U256::zero()) {
-                evm.gas_recorder.record_gas(2300);
-            }
-            let one_64th_value =
-                (evm.gas_input - evm.gas_recorder.gas_usage.clone() as u64) * 63 / 64;
-            if gas > one_64th_value {
-                gas = one_64th_value;
-            }
-            let address_access_cost = if runtime.is_hot(address) {
-                100
-            } else {
-                runtime.mark_hot(address);
-                2600
-            };
-            // TODO check gas is okay
-            let mut sub_evm = EVMContext::create_sub_context(
-                if $maintain_storage {
-                    evm.contract_address
-                } else {
-                    address
-                },
-                Message {
-                    caller: evm.contract_address,
-                    data: evm.memory.bytes[args_offset..args_offset + args_size].to_vec(),
-                    value: value,
-                },
-                gas,
-                code,
-                evm.transaction.clone(),
-                evm.gas_price,
-                evm.nested_index + 1,
-            );
-            // TODO calculate cost of call data
-
-            let response = sub_evm.execute_program(runtime, debug);
-            evm.last_return_data = sub_evm.result;
-            // let current_memory_cost = evm.memory.memory_cost;
-            evm.memory.copy_from(
-                &mut evm.last_return_data,
-                0,
-                ret_offset,
-                ret_size,
-                &mut evm.gas_recorder,
-            );
-            evm.stack.push(U256::from(response as u64));
-            let code_execution_cost = sub_evm.gas_recorder.gas_usage;
-            let positive_value_cost = if !value.eq(&U256::zero()) { 6700 } else { 0 };
-            let value_to_empty_account_cost = if !value.eq(&U256::zero())
-                && runtime.nonce(address).eq(&U256::zero())
-                && runtime.code_size(address).eq(&U256::zero())
-                && runtime.balance(address).eq(&U256::zero())
-            {
-                25000
-            } else {
-                0
-            };
-            evm.gas_recorder.record_gas(
-                (code_execution_cost
-                    + address_access_cost
-                    + positive_value_cost
-                    + value_to_empty_account_cost) as usize,
-            );
-            response
-        }};
-    }
 
     // Provides debug data around each branches block
-    macro_rules! debug_match {
-        ($opcode:expr, { $( $pat:pat => $block:block ),* }) => {
-            match $opcode {
-                $(
-                    $pat => {
-                        #[allow(unreachable_code,unused_variables)]{
-                        {
-                            if debug {
-                                print!("{}", "\t".repeat(evm.nested_index as usize));
-                                println!(
-                                    "PC : {:<5} | Opcode: {:<15} | Gas: {:<10}",
-                                    evm.program_counter,
-                                    opcodes::OPCODE_MAP[&($opcode as u8)],
-                                    format!{"{:x}",evm.gas_input - evm.gas_recorder.clone().gas_usage as u64}
-                                );
-                            }
-                            $block
-                        }
-                    }
-                }),*
-                _ => {}
-            }
-        };
-    }
 
     let opcode: u8 = evm.program[evm.program_counter];
-    debug_match!(opcode, {
+    debug_match!(evm, debug, opcode, {
 
         opcodes::STOP => {
             println!("STOP");
@@ -147,25 +33,25 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         },
 
         opcodes::ADD => {
-            let (a, b) = (pop!(), pop!());
+            let (a, b) = (pop!(evm), pop!(evm));
             evm.stack.push(a.overflowing_add(b).0);
             evm.gas_recorder.record_gas(3);
         },
 
         opcodes::MUL => {
-            let (a, b) = (pop!(), pop!());
+            let (a, b) = (pop!(evm), pop!(evm));
             evm.stack.push(a.overflowing_mul(b).0);
             evm.gas_recorder.record_gas(5);
         },
 
         opcodes::SUB => {
-            let (a, b) = (pop!(), pop!());
+            let (a, b) = (pop!(evm), pop!(evm));
             evm.stack.push(a.overflowing_sub(b).0);
             evm.gas_recorder.record_gas(3);
         },
 
         opcodes::DIV => {
-            let (a, b) = (pop!(), pop!());
+            let (a, b) = (pop!(evm), pop!(evm));
             match b {
                 ZERO => {
                     evm.stack.push(U256::zero());
@@ -178,7 +64,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         },
 
         opcodes::SDIV => {
-            let (a, b) = (pop!(), pop!());
+            let (a, b) = (pop!(evm), pop!(evm));
             match b {
                 ZERO => {
                     evm.stack.push(U256::zero());
@@ -204,7 +90,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         },
 
         opcodes::MOD => {
-            let (a, b) = (pop!(), pop!());
+            let (a, b) = (pop!(evm), pop!(evm));
             match b {
                 ZERO => {
                     evm.stack.push(U256::zero());
@@ -217,7 +103,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         },
 
         opcodes::SMOD => {
-            let (a, b) = (pop!(), pop!());
+            let (a, b) = (pop!(evm), pop!(evm));
             match b {
                 ZERO => {
                     evm.stack.push(U256::zero());
@@ -235,7 +121,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         },
 
         opcodes::ADDMOD => {
-            let (a, b, c) = (pop!(), pop!(), pop!());
+            let (a, b, c) = (pop!(evm), pop!(evm), pop!(evm));
             match c {
                 ZERO => {
                     evm.stack.push(U256::zero());
@@ -248,7 +134,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         },
 
         opcodes::MULMOD => {
-            let (a, b, c) = (pop!(), pop!(), pop!());
+            let (a, b, c) = (pop!(evm), pop!(evm), pop!(evm));
             match c {
                 ZERO => {
                     evm.stack.push(U256::zero());
@@ -257,18 +143,17 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
                     evm.stack.push(a.checked_rem(c).unwrap().overflowing_mul(b.checked_rem(c).unwrap()).0.checked_rem(c).unwrap());
                 }
             }
-            // println!("a: {}, b: {}, c: {}", a, b, c);
             evm.gas_recorder.record_gas(8);
         },
 
         opcodes::EXP => {
-            let (a, exponent) = (pop!(), pop!());
+            let (a, exponent) = (pop!(evm), pop!(evm));
             evm.stack.push(a.overflowing_pow(exponent).0);
             evm.gas_recorder.record_gas(10 + 50 * (util::bytes_for_u256(&exponent) as usize));
         },
 
         opcodes::SIGNEXTEND => {
-            let (x, y) = (pop!(), pop!());
+            let (x, y) = (pop!(evm), pop!(evm));
             // X is the number of bytes of the input lower_mask
             if x > U256::from(31) {
                 evm.stack.push(y);
@@ -290,19 +175,19 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         },
 
         opcodes::LT => {
-            let (a, b) = (pop!(), pop!());
+            let (a, b) = (pop!(evm), pop!(evm));
             evm.stack.push(U256::from((a < b) as u64));
             evm.gas_recorder.record_gas(3);
         },
 
         opcodes::GT => {
-            let (a, b) = (pop!(), pop!());
+            let (a, b) = (pop!(evm), pop!(evm));
             evm.stack.push(U256::from((a > b) as u64));
             evm.gas_recorder.record_gas(3);
         },
 
         opcodes::SLT => {
-            let (a, b) = (pop!(), pop!());
+            let (a, b) = (pop!(evm), pop!(evm));
             let a = uint256_to_int256(u256_to_uint256(a));
             let b = uint256_to_int256(u256_to_uint256(b));
             evm.stack.push(U256::from((a < b) as u64));
@@ -311,7 +196,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
 
         opcodes::SGT => {
             // debug!("SGT");
-            let (a, b) = (pop!(), pop!());
+            let (a, b) = (pop!(evm), pop!(evm));
             let a = uint256_to_int256(u256_to_uint256(a));
             let b = uint256_to_int256(u256_to_uint256(b));
             evm.stack.push(U256::from((a > b) as u64));
@@ -319,44 +204,44 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         },
 
         opcodes::EQ => {
-            let (a, b) = (pop!(), pop!());
+            let (a, b) = (pop!(evm), pop!(evm));
             evm.stack.push(U256::from((a == b) as u64));
             evm.gas_recorder.record_gas(3);
         },
 
         opcodes::ISZERO => {
-            let data = pop!();
+            let data = pop!(evm);
             evm.stack.push(U256::from(data.eq(&U256::zero()) as u64));
             evm.gas_recorder.record_gas(3);
         },
 
         opcodes::AND => {
             // debug!("AND");
-            let (a, b) = (pop!(), pop!());
+            let (a, b) = (pop!(evm), pop!(evm));
             evm.stack.push(a & b);
             evm.gas_recorder.record_gas(3);
         },
 
         opcodes::OR => {
-            let (a, b) = (pop!(), pop!());
+            let (a, b) = (pop!(evm), pop!(evm));
             evm.stack.push(a | b);
             evm.gas_recorder.record_gas(3);
         },
 
         opcodes::XOR => {
-            let (a, b) = (pop!(), pop!());
+            let (a, b) = (pop!(evm), pop!(evm));
             evm.stack.push(a ^ b);
             evm.gas_recorder.record_gas(3);
         },
 
         opcodes::NOT => {
-            let a = pop!();
+            let a = pop!(evm);
             evm.stack.push(!a);
             evm.gas_recorder.record_gas(3);
         },
 
         opcodes::BYTE => {
-            let (i, x) = (pop!(), pop!());
+            let (i, x) = (pop!(evm), pop!(evm));
             if i > U256::from(31) {
                 evm.stack.push(U256::zero());
             } else {
@@ -366,7 +251,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         },
 
         opcodes::SHL => {
-            let (shift, value) = (pop!(), pop!());
+            let (shift, value) = (pop!(evm), pop!(evm));
             if shift > 31.into() {
                 evm.stack.push(U256::zero());
             } else {
@@ -376,7 +261,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         },
 
         opcodes::SHR => {
-            let (shift, value) = (pop!(), pop!());
+            let (shift, value) = (pop!(evm), pop!(evm));
             if shift > 31.into() {
                 evm.stack.push(U256::zero());
             } else {
@@ -387,13 +272,13 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
 
         opcodes::SAR => {
             // TODO
-            // let (shift, value) = (pop!(), pop!().as_i256());
+            // let (shift, value) = (pop!(evm), pop!(evm).as_i256());
             // evm.stack.push((value >> shift).as_u256());
             // evm.gas_usage += 3;
         },
 
         opcodes::KECCAK256 => {
-            let (offset, length) = (pop!().as_usize(), pop!().as_usize());
+            let (offset, length) = (pop!(evm).as_usize(), pop!(evm).as_usize());
             println!("offset: {}, length: {}", offset, length);
             let bytes = evm.memory.read_bytes(offset, length, &mut evm.gas_recorder);
             evm.stack.push(U256::from(keccak256(&bytes).as_bytes()));
@@ -407,7 +292,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         },
 
         opcodes::BALANCE => {
-            let address = pop!();
+            let address = pop!(evm);
             evm.stack.push(runtime.balance(address));
             if runtime.is_hot(address) { evm.gas_recorder.record_gas(100); } else { evm.gas_recorder.record_gas(2600); };
             runtime.mark_hot(address);
@@ -430,7 +315,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
 
         opcodes::CALLDATALOAD => {
             // TODO fix
-            let index = pop!().as_u64() as usize;
+            let index = pop!(evm).as_u64() as usize;
             if index > evm.message.data.len() - 32 {
                 evm.stack.push_bytes(
                     &{
@@ -453,16 +338,10 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         opcodes::CALLDATACOPY => {
             // TODO fix
             let (dest_offset, offset, length) = (
-                pop!().as_usize(),
-                pop!().as_usize(),
-                pop!().as_usize(),
+                pop!(evm).as_usize(),
+                pop!(evm).as_usize(),
+                pop!(evm).as_usize(),
             );
-            // let current_memory_usage = evm.memory.memory_cost;
-                // evm.memory
-                //     .copy_from(&mut evm.message.data, offset, dest_offset, length, &mut evm.gas_recorder);
-                // let new_usage = evm.memory.memory_cost;
-                // evm.gas_usage +=
-                //     3 + 3 * (length as u64 + 31 / 32) + (new_usage - current_memory_usage).as_u64();
         },
 
         opcodes::CODESIZE => {
@@ -472,9 +351,9 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
 
         opcodes::CODECOPY => {
             let (dest_offset, offset, length) = (
-                pop!().as_usize(),
-                pop!().as_usize(),
-                pop!().as_usize(),
+                pop!(evm).as_usize(),
+                pop!(evm).as_usize(),
+                pop!(evm).as_usize(),
             );
 
             evm.memory
@@ -487,7 +366,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         },
 
         opcodes::EXTCODESIZE => {
-            let address = pop!();
+            let address = pop!(evm);
             evm.stack.push(runtime.code_size(address));
             if runtime.is_hot(address) { evm.gas_recorder.record_gas(100); } else { evm.gas_recorder.record_gas(2600); };
             runtime.mark_hot(address);
@@ -495,10 +374,10 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
 
         opcodes::EXTCODECOPY => {
             let (addr, dest_offset, offset, length) = (
-                pop!(),
-                pop!().as_usize(),
-                pop!().as_usize(),
-                pop!().as_usize(),
+                pop!(evm),
+                pop!(evm).as_usize(),
+                pop!(evm).as_usize(),
+                pop!(evm).as_usize(),
             );
 
             evm.memory.copy_from(
@@ -519,23 +398,23 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
 
         opcodes::RETURNDATACOPY => {
             let (dest_offset, offset, length) = (
-                pop!().as_usize(),
-                pop!().as_usize(),
-                pop!().as_usize(),
+                pop!(evm).as_usize(),
+                pop!(evm).as_usize(),
+                pop!(evm).as_usize(),
             );
             evm.memory
                 .copy_from(&mut evm.last_return_data, offset, dest_offset, length, &mut evm.gas_recorder);
         },
 
         opcodes::EXTCODEHASH => {
-            let addr = pop!();
+            let addr = pop!(evm);
             evm.stack.push(U256::from(util::keccak256_u256(addr).as_bytes()));
             if runtime.is_hot(addr) { evm.gas_recorder.record_gas(100); } else { evm.gas_recorder.record_gas(2600); };
             runtime.mark_hot(addr);
         },
 
         opcodes::BLOCKHASH => {
-            let block_number = pop!();
+            let block_number = pop!(evm);
             evm.stack.push(h256_to_u256(runtime.block_hash(block_number)));
             evm.gas_recorder.record_gas(20);
         },
@@ -581,30 +460,30 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         },
 
         opcodes::POP => {
-            pop!();
+            pop!(evm);
             evm.gas_recorder.record_gas(2);
         },
 
         opcodes::MLOAD => {
-            let offset = pop!().as_usize();
+            let offset = pop!(evm).as_usize();
             evm.stack.push(evm.memory.read(offset, &mut evm.gas_recorder));
             evm.gas_recorder.record_gas(3);
         },
 
         opcodes::MSTORE => {
-            let (offset, value) = (pop!().as_usize(), pop!());
+            let (offset, value) = (pop!(evm).as_usize(), pop!(evm));
             evm.memory.write(offset, value, &mut evm.gas_recorder);
             evm.gas_recorder.record_gas(3);
         },
 
         opcodes::MSTORE8 => {
-            let (offset, value) = (pop!().as_usize(), pop!());
+            let (offset, value) = (pop!(evm).as_usize(), pop!(evm));
             evm.memory.write_u8(offset, (value & U256::from(0xFF as u64)).low_u32() as u8, &mut evm.gas_recorder);
             evm.gas_recorder.record_gas(3);
         },
 
         opcodes::SLOAD => {
-            let key = pop!();
+            let key = pop!(evm);
             if runtime.is_hot_index(evm.contract_address, key) {
                 evm.gas_recorder.record_gas(100);
             } else {
@@ -613,17 +492,10 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
             }
             evm.stack
                 .push(h256_to_u256(runtime.read_storage(evm.contract_address, key)));
-            // evm.gas_usage += if runtime.is_hot(evm.contract_address) {
-            //     100
-            // } else {
-            //     2600
-            // };
-            // runtime.mark_hot(evm.contract_address);
         },
 
         opcodes::SSTORE => {
-            let (key, value) = (pop!(), pop!());
-            println!("ket: {}, value: {}", key, value);
+            let (key, value) = (pop!(evm), pop!(evm));
             if !runtime.is_hot_index(evm.contract_address, key){
                 evm.gas_recorder.record_gas(2100);
                 runtime.mark_hot_index(evm.contract_address, key);
@@ -633,7 +505,6 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
                 runtime.read_storage(evm.contract_address,key),
                 u256_to_h256(value),
             );
-            println!("v_org: {}, v_cur: {}, v_new: {}", v_org, v_cur, v_new);
             let dynamic_gas = if (v_cur.eq(&v_new) | !v_org.eq(&v_cur)) {
                  100
             } else if v_org.eq(&ZERO_H256) {
@@ -642,7 +513,6 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
                 2900
             };
             let refund = if !v_org.eq(&ZERO_H256) && v_new.eq(&ZERO_H256) {
-                println!("Refund");
                 15000
             } else {
                 0
@@ -650,34 +520,17 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
             runtime.set_storage(evm.contract_address, key, u256_to_h256(value));
             evm.gas_recorder.record_gas(dynamic_gas);
             evm.gas_recorder.subtract_gas(refund);
-            // let base_dynamic_gas;
-            // if !runtime.storage(evm.contract_address).contains_key(&u256_to_h256(key)) && value.eq(&U256::zero())  {
-            //     println!("Deleting key");
-            //     base_dynamic_gas = 100;
-            // }
-            // else {
-            //     base_dynamic_gas = if (runtime.storage(evm.contract_address).contains_key(&u256_to_h256(key))
-            //         && !h256_to_u256(runtime.storage(evm.contract_address)[&u256_to_h256(key)]).eq(&U256::zero())) || value.eq(&U256::zero())
-            //     {
-            //         5000
-            //     } else {
-            //         20000
-            //     };
-            //     runtime.set_storage(evm.contract_address, key, u256_to_h256(value));
-            // }
-            // TODO already written slot should always be 100
-            // evm.gas_recorder.record_gas(base_dynamic_gas);
         },
 
         opcodes::JUMP => {
-            let destination = pop!().as_usize();
+            let destination = pop!(evm).as_usize();
             evm.program_counter = destination;
             evm.program_counter -= 1;
             evm.gas_recorder.record_gas(8);
         },
 
         opcodes::JUMPI => {
-            let (destination, condition) = (pop!().as_usize(), pop!());
+            let (destination, condition) = (pop!(evm).as_usize(), pop!(evm));
             if !condition.eq(&U256::zero()) {
                 evm.program_counter = destination - 1;
             }
@@ -724,7 +577,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         opcodes::SWAP_1..=opcodes::SWAP_16 => {
             let swap_number: usize = (opcode - opcodes::SWAP_1 + 1) as usize;
             let bottom_value = evm.stack.read_nth(swap_number);
-            let top_value = pop!();
+            let top_value = pop!(evm);
             evm.stack.write_nth(swap_number - 1, top_value);
             evm.stack.push(bottom_value);
             evm.gas_recorder.record_gas(3);
@@ -740,15 +593,15 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         },
 
         opcodes::CALL => {
-            make_call!(false);
+            return_if_false!(make_call(evm, runtime, debug, false));
         },
 
         opcodes::CALLCODE => {
-            make_call!(true);
+            return_if_false!(make_call(evm, runtime, debug, true));
         },
 
         opcodes::RETURN => {
-            let (offset, size) = (pop!().as_usize(), pop!().as_usize());
+            let (offset, size) = (pop!(evm).as_usize(), pop!(evm).as_usize());
             evm.result.set_length(size);
             evm.result.copy_from(&mut evm.memory, offset, 0, size, &mut evm.gas_recorder);
             evm.stopped = true;
@@ -768,14 +621,8 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         }
     });
 
-    evm.program_counter += 1;
-    if evm.program_counter > 1000000 || evm.nested_index > 1024 {
-        return false;
-    }
-    if evm.check_gas_usage() {
-        // TODO add revert logic etc.
-        return false;
-    }
+    return_if_false!(evm.program_counter > 1000000 || evm.nested_index > 1024);
+    return_if_false!(evm.check_gas_usage());
 
     true
 }
