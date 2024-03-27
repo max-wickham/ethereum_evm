@@ -16,6 +16,7 @@ pub fn call_data_gas_cost(data: &Vec<u8>) -> usize {
 #[derive(Copy,Clone)]
 pub struct GasRecorder {
     pub gas_usage: usize,
+    pub gas_refunds: usize,
 }
 
 impl GasRecorder {
@@ -36,6 +37,10 @@ impl GasRecorder {
         // let memory_expansion_cost = 3 + 3 * (len as u64 + 31 / 32) as usize + (new_cost - old_cost);
         let memory_expansion_cost = new_cost - old_cost;
         self.gas_usage += memory_expansion_cost;
+    }
+
+    pub fn subtract_gas(&mut self, gas: usize) {
+        self.gas_refunds += gas;
     }
 
     fn memory_cost(current_memory_size_bytes: usize) -> usize {

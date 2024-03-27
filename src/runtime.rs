@@ -24,8 +24,8 @@ pub trait Runtime {
     fn code(&self, address: U256) -> Vec<u8>;
     fn exists(&self, address: U256) -> bool;
     fn nonce(&self, address: U256) -> U256;
-    fn storage(&mut self, address: U256) -> &BTreeMap<H256, H256>;
-    fn original_storage(&mut self, address: U256) -> &BTreeMap<H256, H256>;
+    fn read_storage(&self, address: U256, index: U256) -> H256;
+    fn read_original_storage(&self, address: U256, index: U256) -> H256;
 
     // Modify Contract State
     fn is_deleted(&self, address: U256) -> bool;

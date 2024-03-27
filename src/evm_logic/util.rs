@@ -19,6 +19,7 @@ lazy_static! {
         "-57896044618658097711785492504343953926634992332820282019728792003956564819968"
     )
     .unwrap();
+    pub static ref ZERO_H256: H256 = u256_to_h256(U256::zero());
 }
 
 fn vec_to_fixed_array(bytes: Vec<u8>) -> [u8; 32] {
