@@ -1,6 +1,6 @@
 mod decoder;
 
-use crate::gas_calculator::{call_data_gas_cost, GasRecorder};
+use crate::evm_logic::gas_calculator::{call_data_gas_cost, GasRecorder};
 use crate::state::memory::Memory;
 use crate::state::stack::Stack;
 use crate::runtime::Runtime;

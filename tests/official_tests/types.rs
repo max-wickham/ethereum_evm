@@ -1,8 +1,54 @@
+use ethereum_evm::evm_logic::util::{h256_to_u256, u256_to_h256};
+use hex::FromHex;
 use primitive_types::{H256, U256};
-use serde::Deserialize;
-use std::collections::BTreeMap;
+use serde::{Deserialize, Deserializer};
+use std::{collections::BTreeMap, fmt};
 
 use super::util::Hex;
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+struct WrappedU256(U256);
+
+impl<'de> Deserialize<'de> for WrappedU256 {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct H256Visitor;
+
+        impl<'de> serde::de::Visitor<'de> for H256Visitor {
+            type Value = WrappedU256;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a string representing a hex-encoded H256 value")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<WrappedU256, E>
+            where
+                E: serde::de::Error,
+            {
+                let value_without_prefix = if value.starts_with("0x") {
+                    &value[2..] // Skip the first two characters (0x)
+                } else {
+                    value
+                };
+                let hash_bytes: Vec<u8> = match Vec::<u8>::from_hex(value_without_prefix) {
+                    Ok(bytes) => bytes,
+                    Err(_) => return Err(serde::de::Error::invalid_value(serde::de::Unexpected::Str(value), &self)),
+                };
+
+                let mut hash = [0u8; 32];
+                let num_bytes_to_copy = hash_bytes.len().min(32);
+                hash[..num_bytes_to_copy].copy_from_slice(&hash_bytes[..num_bytes_to_copy]);
+
+                Ok(WrappedU256(U256::from(hash)))
+            }
+        }
+
+        deserializer.deserialize_str(H256Visitor)
+    }
+}
+
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -113,10 +159,24 @@ pub struct TestPostIndexes {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TestContract {
-    pub balance: U256,
+    balance: WrappedU256,
     pub code: Hex,
-    pub nonce: U256,
-    pub storage: BTreeMap<H256, H256>,
+    nonce: WrappedU256,
+    storage: BTreeMap<WrappedU256, WrappedU256>,
+}
+
+impl TestContract{
+    pub fn storage(&self) -> BTreeMap<H256, H256> {
+        self.storage.iter().map(|(k, v)| (u256_to_h256(k.0), u256_to_h256(k.0))).collect()
+    }
+
+    pub fn nonce(&self) -> U256 {
+        self.nonce.0
+    }
+
+    pub fn balance(&self) -> U256 {
+        self.balance.0
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]

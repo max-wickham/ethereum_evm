@@ -1,10 +1,16 @@
 use ethereum_evm::runtime::Runtime;
-use ethereum_evm::util::{h256_to_u256, keccak256, u256_to_h256};
+use ethereum_evm::evm_logic::util::{h256_to_u256, keccak256, u256_to_h256};
 use primitive_types::{H160, H256, U256};
 use rlp::{Encodable, RlpStream};
 use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::mem;
+
+/*
+!!!
+This implementation is extremely inefficient. It is only for running test cases. Every context copies the EVM state.
+!!!
+*/
 
 #[derive(Clone)]
 pub struct Contract {
@@ -13,6 +19,7 @@ pub struct Contract {
     pub code_hash: H256,
     pub code: Vec<u8>,
     pub nonce: U256,
+    // Should really be moved into a box for copying
     pub storage: BTreeMap<H256, H256>,
     pub is_deleted: bool,
     pub is_cold: bool,
@@ -286,7 +293,7 @@ impl Runtime for MockRuntime {
 
     // Modify context stack
     fn add_context(&mut self) {
-        println!("Adding Context");
+        // Could be slightly faster with a swap perhaps
         match mem::take(&mut self.current_context) {
             Some(context) => {
                 self.current_context = Some(Box::new(Context {
@@ -332,5 +339,3 @@ impl Runtime for MockRuntime {
         }
     }
 }
-
-impl MockRuntime {}

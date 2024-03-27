@@ -1,4 +1,5 @@
 // TODO complete PUSH instructions
+// TODO move to testing
 
 use std::str::FromStr;
 use primitive_types::U256;

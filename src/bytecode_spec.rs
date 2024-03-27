@@ -1,6 +1,7 @@
 pub mod opcodes {
     use lazy_static::lazy_static;
     use util::opcode_map;
+    // This macro add a debug map of opcode byte to string name
     opcode_map! {
         pub const STOP: u8 = 0x00u8;
         pub const ADD: u8 = 0x01u8;
