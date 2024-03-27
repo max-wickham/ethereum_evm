@@ -5,11 +5,12 @@ Should be converted to function once proper error handling is introduced
 
 use primitive_types::U256;
 
+use crate::result::{ExecutionResult, Error};
 use crate::runtime::Runtime;
 use super::{macros::pop, EVMContext, Message};
 
 #[inline]
-pub fn make_call(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool, maintain_storage: bool) -> bool {
+pub fn make_call(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool, maintain_storage: bool) -> ExecutionResult {
         let (mut gas, address, value, args_offset, args_size, ret_offset, ret_size) = (
             pop!(evm).as_u64(),
             pop!(evm),
@@ -54,7 +55,7 @@ pub fn make_call(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool, 
         );
         // TODO calculate cost of call data
 
-        let response = sub_evm.execute_program(runtime, debug);
+        let execution_result = sub_evm.execute_program(runtime, debug);
         evm.last_return_data = sub_evm.result;
         // let current_memory_cost = evm.memory.memory_cost;
         evm.memory.copy_from(
@@ -64,7 +65,7 @@ pub fn make_call(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool, 
             ret_size,
             &mut evm.gas_recorder,
         );
-        evm.stack.push(U256::from(response as u64));
+        evm.stack.push(U256::from(match execution_result { ExecutionResult::Success => {true} _ => {false}} as u64));
         let code_execution_cost = sub_evm.gas_recorder.gas_usage;
         let positive_value_cost = if !value.eq(&U256::zero()) { 6700 } else { 0 };
         let value_to_empty_account_cost = if !value.eq(&U256::zero())
@@ -80,7 +81,7 @@ pub fn make_call(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool, 
             (code_execution_cost
                 + address_access_cost
                 + positive_value_cost
-                + value_to_empty_account_cost) as usize,
+                + value_to_empty_account_cost) as u64,
         );
-        response
+        execution_result
 }

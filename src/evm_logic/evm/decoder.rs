@@ -1,11 +1,13 @@
 use crate::configs::bytecode_spec::opcodes;
+use crate::configs::gas_costs::{static_costs, DynamicCosts};
 use crate::evm_logic::evm::call::make_call;
-use crate::evm_logic::evm::macros::{debug_match, pop, return_if_false};
-use crate::evm_logic::evm::{EVMContext, Message};
+use crate::evm_logic::evm::macros::{debug_match, pop, return_if_error};
+use crate::evm_logic::evm::EVMContext;
 use crate::evm_logic::util::{
     self, h256_to_u256, int256_to_uint256, keccak256, u256_to_h256, u256_to_uint256,
     uint256_to_int256, MAX_UINT256, MAX_UINT256_COMPLEMENT, ZERO, ZERO_H256,
 };
+use crate::result::{ExecutionResult, Error};
 use crate::runtime::Runtime;
 use crate::state::memory::Memory;
 
@@ -14,7 +16,7 @@ use primitive_types::U256;
 use std::ops::Rem;
 
 #[inline]
-pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool) -> bool {
+pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool) -> ExecutionResult {
     /*
     Run the next instruction, adjusting gas usage and return a bool that is true if okay, false if exception
     */
@@ -29,25 +31,26 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         opcodes::STOP => {
             println!("STOP");
             evm.stopped = true;
-            return true;
+            return ExecutionResult::Success;
         },
 
         opcodes::ADD => {
             let (a, b) = (pop!(evm), pop!(evm));
             evm.stack.push(a.overflowing_add(b).0);
-            evm.gas_recorder.record_gas(3);
+            evm.gas_recorder.record_gas(static_costs::G_VERY_LOW);
+            // evm.gas_recorder.record_gas(3);
         },
 
         opcodes::MUL => {
             let (a, b) = (pop!(evm), pop!(evm));
             evm.stack.push(a.overflowing_mul(b).0);
-            evm.gas_recorder.record_gas(5);
+            evm.gas_recorder.record_gas(static_costs::G_LOW);
         },
 
         opcodes::SUB => {
             let (a, b) = (pop!(evm), pop!(evm));
             evm.stack.push(a.overflowing_sub(b).0);
-            evm.gas_recorder.record_gas(3);
+            evm.gas_recorder.record_gas(static_costs::G_VERY_LOW);
         },
 
         opcodes::DIV => {
@@ -60,7 +63,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
                     evm.stack.push(a.div_mod(b).0);
                 }
             }
-            evm.gas_recorder.record_gas(5);
+            evm.gas_recorder.record_gas(static_costs::G_LOW);
         },
 
         opcodes::SDIV => {
@@ -86,7 +89,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
 
                 }
             }
-            evm.gas_recorder.record_gas(5);
+            evm.gas_recorder.record_gas(static_costs::G_LOW);
         },
 
         opcodes::MOD => {
@@ -99,7 +102,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
                     evm.stack.push(a.rem(b));
                 }
             }
-            evm.gas_recorder.record_gas(5);
+            evm.gas_recorder.record_gas(static_costs::G_LOW);
         },
 
         opcodes::SMOD => {
@@ -116,7 +119,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
                     evm.stack.push(result);
                 }
             }
-            evm.gas_recorder.record_gas(5);
+            evm.gas_recorder.record_gas(static_costs::G_LOW);
 
         },
 
@@ -130,7 +133,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
                     evm.stack.push(a.checked_rem(c).unwrap().overflowing_add(b.checked_rem(c).unwrap()).0);
                 }
             }
-            evm.gas_recorder.record_gas(8);
+            evm.gas_recorder.record_gas(static_costs::G_MID);
         },
 
         opcodes::MULMOD => {
@@ -143,13 +146,14 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
                     evm.stack.push(a.checked_rem(c).unwrap().overflowing_mul(b.checked_rem(c).unwrap()).0.checked_rem(c).unwrap());
                 }
             }
-            evm.gas_recorder.record_gas(8);
+            evm.gas_recorder.record_gas(static_costs::G_MID);
         },
 
         opcodes::EXP => {
             let (a, exponent) = (pop!(evm), pop!(evm));
             evm.stack.push(a.overflowing_pow(exponent).0);
-            evm.gas_recorder.record_gas(10 + 50 * (util::bytes_for_u256(&exponent) as usize));
+            evm.gas_recorder.record_gas(DynamicCosts::Exp { power: exponent }.cost());
+            // evm.gas_recorder.record_gas(10 + 50 * (util::bytes_for_u256(&exponent) as u64));
         },
 
         opcodes::SIGNEXTEND => {
@@ -171,19 +175,19 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
                     evm.stack.push(y | higher_mask);
                 }
             }
-            evm.gas_recorder.record_gas(5);
+            evm.gas_recorder.record_gas(static_costs::G_LOW);
         },
 
         opcodes::LT => {
             let (a, b) = (pop!(evm), pop!(evm));
             evm.stack.push(U256::from((a < b) as u64));
-            evm.gas_recorder.record_gas(3);
+            evm.gas_recorder.record_gas(static_costs::G_VERY_LOW);
         },
 
         opcodes::GT => {
             let (a, b) = (pop!(evm), pop!(evm));
             evm.stack.push(U256::from((a > b) as u64));
-            evm.gas_recorder.record_gas(3);
+            evm.gas_recorder.record_gas(static_costs::G_VERY_LOW);
         },
 
         opcodes::SLT => {
@@ -191,7 +195,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
             let a = uint256_to_int256(u256_to_uint256(a));
             let b = uint256_to_int256(u256_to_uint256(b));
             evm.stack.push(U256::from((a < b) as u64));
-            evm.gas_recorder.record_gas(3);
+            evm.gas_recorder.record_gas(static_costs::G_VERY_LOW);
         },
 
         opcodes::SGT => {
@@ -200,44 +204,44 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
             let a = uint256_to_int256(u256_to_uint256(a));
             let b = uint256_to_int256(u256_to_uint256(b));
             evm.stack.push(U256::from((a > b) as u64));
-            evm.gas_recorder.record_gas(3);
+            evm.gas_recorder.record_gas(static_costs::G_VERY_LOW);
         },
 
         opcodes::EQ => {
             let (a, b) = (pop!(evm), pop!(evm));
             evm.stack.push(U256::from((a == b) as u64));
-            evm.gas_recorder.record_gas(3);
+            evm.gas_recorder.record_gas(static_costs::G_VERY_LOW);
         },
 
         opcodes::ISZERO => {
             let data = pop!(evm);
             evm.stack.push(U256::from(data.eq(&U256::zero()) as u64));
-            evm.gas_recorder.record_gas(3);
+            evm.gas_recorder.record_gas(static_costs::G_VERY_LOW);
         },
 
         opcodes::AND => {
             // debug!("AND");
             let (a, b) = (pop!(evm), pop!(evm));
             evm.stack.push(a & b);
-            evm.gas_recorder.record_gas(3);
+            evm.gas_recorder.record_gas(static_costs::G_VERY_LOW);
         },
 
         opcodes::OR => {
             let (a, b) = (pop!(evm), pop!(evm));
             evm.stack.push(a | b);
-            evm.gas_recorder.record_gas(3);
+            evm.gas_recorder.record_gas(static_costs::G_VERY_LOW);
         },
 
         opcodes::XOR => {
             let (a, b) = (pop!(evm), pop!(evm));
             evm.stack.push(a ^ b);
-            evm.gas_recorder.record_gas(3);
+            evm.gas_recorder.record_gas(static_costs::G_VERY_LOW);
         },
 
         opcodes::NOT => {
             let a = pop!(evm);
             evm.stack.push(!a);
-            evm.gas_recorder.record_gas(3);
+            evm.gas_recorder.record_gas(static_costs::G_VERY_LOW);
         },
 
         opcodes::BYTE => {
@@ -247,7 +251,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
             } else {
             evm.stack.push((x >> (U256::from(248) - i * 8)) & (0xFF as u64).into());
             }
-            evm.gas_recorder.record_gas(3);
+            evm.gas_recorder.record_gas(static_costs::G_VERY_LOW);
         },
 
         opcodes::SHL => {
@@ -257,7 +261,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
             } else {
                 evm.stack.push(value << shift);
             }
-            evm.gas_recorder.record_gas(3);
+            evm.gas_recorder.record_gas(static_costs::G_VERY_LOW);
         },
 
         opcodes::SHR => {
@@ -267,7 +271,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
             } else {
                 evm.stack.push(value >> shift);
             }
-            evm.gas_recorder.record_gas(3);
+            evm.gas_recorder.record_gas(static_costs::G_VERY_LOW);
         },
 
         opcodes::SAR => {
@@ -283,7 +287,9 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
             let bytes = evm.memory.read_bytes(offset, length, &mut evm.gas_recorder);
             evm.stack.push(U256::from(keccak256(&bytes).as_bytes()));
             // As of the Ethereum Yellow Paper (EIP-62), the gas cost for the KECCAK256 instruction is 30 gas plus an additional 6 gas for each 256-bit word (or part thereof) of input data.
-            evm.gas_recorder.record_gas(30 + (length.div_ceil(32) as u64 * 6) as usize);
+
+            evm.gas_recorder.record_gas(DynamicCosts::Keccak256 { len: length as u64}.cost());
+            // evm.gas_recorder.record_gas(30 + (length.div_ceil(32) as u64 * 6) as u64);
         },
 
         opcodes::ADDRESS => {
@@ -505,7 +511,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
                 runtime.read_storage(evm.contract_address,key),
                 u256_to_h256(value),
             );
-            let dynamic_gas = if (v_cur.eq(&v_new) | !v_org.eq(&v_cur)) {
+            let dynamic_gas = if v_cur.eq(&v_new) | !v_org.eq(&v_cur) {
                  100
             } else if v_org.eq(&ZERO_H256) {
                  20000
@@ -593,11 +599,11 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         },
 
         opcodes::CALL => {
-            return_if_false!(make_call(evm, runtime, debug, false));
+            return_if_error!(make_call(evm, runtime, debug, false));
         },
 
         opcodes::CALLCODE => {
-            return_if_false!(make_call(evm, runtime, debug, true));
+            return_if_error!(make_call(evm, runtime, debug, true));
         },
 
         opcodes::RETURN => {
@@ -605,7 +611,6 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
             evm.result.set_length(size);
             evm.result.copy_from(&mut evm.memory, offset, 0, size, &mut evm.gas_recorder);
             evm.stopped = true;
-            return true;
         },
 
         opcodes::DELEGATECALL => {
@@ -621,8 +626,8 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         }
     });
 
-    return_if_false!(evm.program_counter > 1000000 || evm.nested_index > 1024);
-    return_if_false!(evm.check_gas_usage());
-
-    true
+    // return_if_error!(evm.program_counter > 1000000 || evm.nested_index > 1024);
+    return_if_error!(evm.check_gas_usage());
+    evm.program_counter += 1;
+    return ExecutionResult::Success;
 }

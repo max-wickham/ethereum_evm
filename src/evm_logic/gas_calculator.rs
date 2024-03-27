@@ -1,7 +1,8 @@
 use primitive_types::U256;
 
+// TODO move into gas_recorder
 #[inline]
-pub fn call_data_gas_cost(data: &Vec<u8>) -> usize {
+pub fn call_data_gas_cost(data: &Vec<u8>) -> u64 {
     let mut cost = 0;
     for byte in data {
         if *byte == 0 {
@@ -20,8 +21,8 @@ pub struct GasRecorder {
 }
 
 impl GasRecorder {
-    pub fn record_gas(&mut self, gas: usize) {
-        self.gas_usage += gas;
+    pub fn record_gas(&mut self, gas: u64) {
+        self.gas_usage += gas as usize;
     }
 
     pub fn record_memory_usage(&mut self, current_memory_size: usize, new_memory_size: usize) {

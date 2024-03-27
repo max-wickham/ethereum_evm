@@ -15,15 +15,12 @@ pub fn opcode_map(input: TokenStream) -> TokenStream {
     for item in input.items.clone() {
         if let Item::Const(const_item) = item {
             let byte = match *const_item.expr {
-                syn::Expr::Lit(lit) => {
-                    match lit.lit {
-                        syn::Lit::Int(byte) => {println!("{:?}", byte.to_string());
-                            byte}
-                        _ => {
-                            panic!("Expected byte literal");
-                        }
+                syn::Expr::Lit(lit) => match lit.lit {
+                    syn::Lit::Int(byte) => byte,
+                    _ => {
+                        panic!("Expected byte literal");
                     }
-                }
+                },
                 _ => {
                     panic!("Expected integer literal");
                 }

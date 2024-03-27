@@ -94,7 +94,7 @@ pub fn run_test(test: &TestState, debug: bool) {
         test.transaction.value,
         test.transaction.data,
         debug,
-    );
+    ).1;
 
     // Calculate the gas usage
     let eth_usage = (gas_usage) * test.transaction.gas_price.unwrap_or_default().as_usize();
@@ -137,12 +137,12 @@ pub fn run_test(test: &TestState, debug: bool) {
 //     "./tests/official_tests/tests/GeneralStateTests/stRandom"
 // );
 
-// generate_official_tests_from_file!(
-//     "./tests/official_tests/tests/GeneralStateTests/stMemoryTest/buffer.json"
-// );
-// generate_official_tests_from_file!(
-//     "./tests/official_tests/tests/GeneralStateTests/stMemoryTest/buffer.json"
-// );
-generate_official_tests_from_folder!(
-    "./tests/official_tests/tests/GeneralStateTests/VMTests/vmArithmeticTest"
+generate_official_tests_from_file!(
+    "./tests/official_tests/tests/GeneralStateTests/stMemoryTest/buffer.json"
 );
+// generate_official_tests_from_file!(
+//     "./tests/official_tests/tests/GeneralStateTests/VMTests/vmArithmeticTest/add.json"
+// );
+// generate_official_tests_from_folder!(
+//     "./tests/official_tests/tests/GeneralStateTests/VMTests/vmArithmeticTest"
+// );

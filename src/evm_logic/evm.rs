@@ -1,11 +1,13 @@
+mod call;
 mod decoder;
 mod macros;
-mod call;
 
+use crate::evm_logic::evm::macros::{break_if_error, return_if_error};
 use crate::evm_logic::gas_calculator::{call_data_gas_cost, GasRecorder};
+use crate::result::ExecutionResult;
+use crate::runtime::Runtime;
 use crate::state::memory::Memory;
 use crate::state::stack::Stack;
-use crate::runtime::Runtime;
 
 use primitive_types::U256;
 
@@ -49,7 +51,7 @@ impl EVMContext {
         value: U256,
         data: Vec<u8>,
         debug: bool,
-    ) -> usize {
+    ) -> (ExecutionResult, usize) {
         let message = Message {
             caller: contract,
             value: value,
@@ -69,8 +71,11 @@ impl EVMContext {
             0,
         );
         evm.gas_recorder.record_gas(21000);
-        evm.execute_program(runtime, debug);
-        evm.gas_recorder.gas_usage - usize::min(evm.gas_recorder.gas_refunds, evm.gas_recorder.gas_usage / 2)
+        let result = evm.execute_program(runtime, debug);
+        // TODO move this into gas_recorder
+        let gas_usage = evm.gas_recorder.gas_usage
+            - usize::min(evm.gas_recorder.gas_refunds, evm.gas_recorder.gas_usage / 2);
+        return (result, gas_usage);
     }
 
     #[inline]
@@ -86,7 +91,13 @@ impl EVMContext {
         EVMContext {
             stack: Stack::new(),
             memory: Memory::new(),
-            program: Memory::from(code, &mut GasRecorder { gas_usage: 0, gas_refunds: 0 }),
+            program: Memory::from(
+                code,
+                &mut GasRecorder {
+                    gas_usage: 0,
+                    gas_refunds: 0,
+                },
+            ),
             program_counter: 0,
             contract_address: address,
             // TODO remove need to clone here
@@ -98,29 +109,29 @@ impl EVMContext {
             gas_price: gas_price,
             stopped: false,
             nested_index: nested_index,
-            gas_recorder: GasRecorder { gas_usage: 0 , gas_refunds: 0},
+            gas_recorder: GasRecorder {
+                gas_usage: 0,
+                gas_refunds: 0,
+            },
         }
     }
 
     #[inline]
-    fn execute_program(&mut self, runtime: &mut impl Runtime, debug: bool) -> bool {
+    fn execute_program(&mut self, runtime: &mut impl Runtime, debug: bool) -> ExecutionResult {
         runtime.add_context();
 
-        let result = || -> bool {
-            println!("Message data size : {:?}", self.message.data);
-            println!("Message data size : {:?}", self.message.data.len());
-            if self.message.data.len() != 0{
+        let result = {
+            let mut result = ExecutionResult::Success;
+            if self.message.data.len() != 0 {
                 self.gas_recorder
-                .record_gas(call_data_gas_cost(&self.message.data));
+                    .record_gas(call_data_gas_cost(&self.message.data));
             }
             if debug {
                 println!("Call Data Gas Cost: {:x}", self.gas_recorder.gas_usage);
             }
             while !self.stopped {
-                let result = self.execute_next_instruction(runtime, debug);
-                if !result {
-                    return false;
-                }
+                result = self.execute_next_instruction(runtime, debug);
+                break_if_error!(result);
             }
             if debug {
                 println!(
@@ -128,24 +139,36 @@ impl EVMContext {
                     self.gas_input - self.gas_recorder.gas_usage as u64
                 );
             }
-            true
-        }();
-        if result {
-            runtime.merge_context();
-        } else {
-            runtime.revert_context();
+            result
+        };
+        match result {
+            ExecutionResult::Success => {
+                runtime.merge_context();
+            }
+            ExecutionResult::Err(_) => {
+                runtime.revert_context();
+            }
         }
 
         result
     }
 
     #[inline]
-    fn execute_next_instruction(&mut self, runtime: &mut impl Runtime, debug: bool) -> bool {
+    fn execute_next_instruction(
+        &mut self,
+        runtime: &mut impl Runtime,
+        debug: bool,
+    ) -> ExecutionResult {
         decoder::decode_instruction(self, runtime, debug)
     }
     #[inline]
-    fn check_gas_usage(&self) -> bool {
-        (self.gas_recorder.gas_usage - self.gas_recorder.gas_refunds) > self.gas_input as usize
+    fn check_gas_usage(&self) -> ExecutionResult {
+        match (self.gas_recorder.gas_usage - self.gas_recorder.gas_refunds)
+            > self.gas_input as usize
+        {
+            true => ExecutionResult::Err(crate::result::Error::InsufficientGas),
+            false => ExecutionResult::Success,
+        }
     }
 }
 

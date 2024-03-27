@@ -1,4 +1,4 @@
-
+use crate::result::{ExecutionResult, Error};
 
 macro_rules! debug_match {
     ($evm_val:expr, $debug:expr, $opcode:expr, { $( $pat:pat => $block:block ),* }) => {
@@ -26,14 +26,25 @@ macro_rules! debug_match {
 }
 pub(crate) use debug_match;
 
-macro_rules! return_if_false {
+macro_rules! return_if_error {
     ($evm_val:expr) => {
-        if !$evm_val {
-            return false;
+        match $evm_val {
+            ExecutionResult::Err(err) => return ExecutionResult::Err(err),
+            _ => {}
         }
     };
 }
-pub(crate) use return_if_false;
+pub(crate) use return_if_error;
+
+macro_rules! break_if_error {
+    ($evm_val:expr) => {
+        match $evm_val {
+            ExecutionResult::Err(err) => {break;},
+            _ => {}
+        }
+    };
+}
+pub(crate) use break_if_error;
 
 
 macro_rules! pop {
@@ -41,7 +52,7 @@ macro_rules! pop {
         let result = $evm_val.stack.pop();
         let result = match result {
             Err(()) => {
-                return false;
+                return ExecutionResult::Err(Error::InsufficientValuesOnStack);
             }
 
             Ok(value) => value,
