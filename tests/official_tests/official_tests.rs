@@ -137,6 +137,12 @@ pub fn run_test(test: &TestState, debug: bool) {
 //     "./tests/official_tests/tests/GeneralStateTests/stRandom"
 // );
 
-generate_official_tests_from_file!(
-    "./tests/official_tests/tests/GeneralStateTests/stMemoryTest/buffer.json"
+// generate_official_tests_from_file!(
+//     "./tests/official_tests/tests/GeneralStateTests/stMemoryTest/buffer.json"
+// );
+// generate_official_tests_from_file!(
+//     "./tests/official_tests/tests/GeneralStateTests/stMemoryTest/buffer.json"
+// );
+generate_official_tests_from_folder!(
+    "./tests/official_tests/tests/GeneralStateTests/VMTests/vmArithmeticTest"
 );
