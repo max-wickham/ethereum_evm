@@ -1,12 +1,13 @@
 
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum Error {
     InsufficientValuesOnStack,
-    InsufficientGas
+    InsufficientGas,
+    ModifyStaticState,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum ExecutionResult {
     Success,
     Err(Error)

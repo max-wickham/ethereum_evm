@@ -22,7 +22,7 @@ lazy_static! {
     pub static ref ZERO_H256: H256 = u256_to_h256(U256::zero());
 }
 
-fn vec_to_fixed_array(bytes: Vec<u8>) -> [u8; 32] {
+pub fn vec_to_fixed_array(bytes: Vec<u8>) -> [u8; 32] {
     let mut result = [0u8; 32];
     let len = bytes.len().min(32); // Take minimum to avoid out-of-bounds access
                                    // Copy bytes into the result array

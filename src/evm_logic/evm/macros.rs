@@ -29,7 +29,9 @@ pub(crate) use debug_match;
 macro_rules! return_if_error {
     ($evm_val:expr) => {
         match $evm_val {
-            ExecutionResult::Err(err) => return ExecutionResult::Err(err),
+            ExecutionResult::Err(err) => {
+                println!("Error: {:?}", err);
+                return ExecutionResult::Err(err)},
             _ => {}
         }
     };
@@ -38,13 +40,25 @@ pub(crate) use return_if_error;
 
 macro_rules! break_if_error {
     ($evm_val:expr) => {
+        #[allow(dead_code)]
         match $evm_val {
-            ExecutionResult::Err(err) => {break;},
+            ExecutionResult::Err(_) => {break;},
             _ => {}
         }
     };
 }
 pub(crate) use break_if_error;
+
+macro_rules! return_error_if_static {
+    ($evm_val:expr) => {
+        if $evm_val.is_static {
+            return ExecutionResult::Err(Error::ModifyStaticState);
+        }
+
+    };
+}
+pub(crate) use return_error_if_static;
+
 
 
 macro_rules! pop {
@@ -52,6 +66,7 @@ macro_rules! pop {
         let result = $evm_val.stack.pop();
         let result = match result {
             Err(()) => {
+                println!("Error: {:?}", Error::InsufficientValuesOnStack);
                 return ExecutionResult::Err(Error::InsufficientValuesOnStack);
             }
 

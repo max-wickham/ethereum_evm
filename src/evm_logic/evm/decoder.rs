@@ -1,7 +1,8 @@
 use crate::configs::bytecode_spec::opcodes;
 use crate::configs::gas_costs::{static_costs, DynamicCosts};
-use crate::evm_logic::evm::call::make_call;
-use crate::evm_logic::evm::macros::{debug_match, pop, return_if_error};
+use crate::evm_logic::evm::call::{call, call_code, delegate_call, make_call, static_call};
+use crate::evm_logic::evm::create::{create, create_1, create_2};
+use crate::evm_logic::evm::macros::{debug_match, pop, return_error_if_static, return_if_error};
 use crate::evm_logic::evm::EVMContext;
 use crate::evm_logic::util::{
     self, h256_to_u256, int256_to_uint256, keccak256, u256_to_h256, u256_to_uint256,
@@ -24,7 +25,6 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
     // Not a function as need to be able to return from caller function
 
     // Provides debug data around each branches block
-
     let opcode: u8 = evm.program[evm.program_counter];
     debug_match!(evm, debug, opcode, {
 
@@ -506,6 +506,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         },
 
         opcodes::SSTORE => {
+            return_error_if_static!(evm);
             let (key, value) = (pop!(evm), pop!(evm));
             if !runtime.is_hot_index(evm.contract_address, key){
                 evm.gas_recorder.record_gas(2100);
@@ -595,20 +596,31 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         },
 
         // TODO log
-        opcodes::LOG_0 => {
-            // TODO
+        opcodes::LOG_0..=opcodes::LOG_4 => {
+            return_error_if_static!(evm);
+            // TODO implement properly
+            let (offset, size) = (pop!(evm).as_usize(), pop!(evm).as_usize());
+            let mut topics: Vec<U256> = Vec::new();
+            for num_topic in 0..opcode - opcodes::LOG_0 {
+                topics.push(pop!(evm));
+            }
+            let mut log_mem = Memory::new();
+            log_mem.copy_from_with_local_cost(&mut evm.memory, offset, 0, size, &mut evm.gas_recorder);
+            evm.gas_recorder.record_gas(DynamicCosts::Log { topic_length: topics.len() as u8, size: size }.cost())
         },
 
         opcodes::CREATE => {
-            // TODO
+            return_error_if_static!(evm);
+            // return_if_error!(create(evm, runtime, debug));
         },
 
         opcodes::CALL => {
-            return_if_error!(make_call(evm, runtime, debug, false));
+            return_error_if_static!(evm);
+            return_if_error!(call(evm, runtime, debug));
         },
 
         opcodes::CALLCODE => {
-            return_if_error!(make_call(evm, runtime, debug, true));
+            return_if_error!(call_code(evm, runtime, debug));
         },
 
         opcodes::RETURN => {
@@ -621,13 +633,16 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         opcodes::DELEGATECALL => {
             // TODO
             // Same as call but storage, sender and value remain the same
-            evm.gas_recorder.record_gas(100);
+            return_if_error!(delegate_call(evm, runtime, debug));
         },
 
         opcodes::CREATE2 => {
-            // TODO
-            // Same as create but except the salt allows the new contract to be deployed at a consistent, deterministic address.
-            // Should deployment succeed, the account's code is set to the return data resulting from executing the initialisation code.
+            return_error_if_static!(evm);
+            return_if_error!(create_2(evm, runtime, debug));
+        },
+
+        opcodes::STATICCALL => {
+            return_if_error!(static_call(evm, runtime, debug));
         }
     });
 

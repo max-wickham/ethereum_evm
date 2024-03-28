@@ -70,14 +70,14 @@ impl Memory {
     ) {
         println!("Write addresses: {}", write_address);
         if write_address + length > self.max_index {
+            self.expand(write_address + length, &mut GasRecorder{gas_usage: 0, gas_refunds: 0});
+        }
+        if memory.bytes.len() < read_address + length {
             println!("Expanding memory");
             println!("memory bytes length: {}", memory.bytes.len());
             println!("read address: {}", read_address);
             println!("length: {}", length);
             println!("max index: {}", self.max_index);
-            self.expand(write_address + length, &mut GasRecorder{gas_usage: 0, gas_refunds: 0});
-        }
-        if memory.bytes.len() < read_address + length {
             memory.expand(read_address + length, gas_recorder)
         }
         self.bytes[write_address..write_address + length]

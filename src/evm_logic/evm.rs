@@ -1,6 +1,7 @@
 mod call;
 mod decoder;
 mod macros;
+mod create;
 
 use crate::evm_logic::evm::macros::{break_if_error, return_if_error};
 use crate::evm_logic::gas_calculator::{call_data_gas_cost, GasRecorder};
@@ -38,6 +39,7 @@ pub struct EVMContext {
     stopped: bool,
     nested_index: usize,
     gas_recorder: GasRecorder,
+    is_static: bool
 }
 
 impl EVMContext {
@@ -69,8 +71,16 @@ impl EVMContext {
             transaction,
             gas_price,
             0,
+            false,
         );
         evm.gas_recorder.record_gas(21000);
+        if evm.message.data.len() != 0 {
+            evm.gas_recorder
+                .record_gas(call_data_gas_cost(&evm.message.data));
+        }
+        if debug {
+            println!("Call Data Gas Cost: {:x}", evm.gas_recorder.gas_usage);
+        }
         let result = evm.execute_program(runtime, debug);
         // TODO move this into gas_recorder
         let gas_usage = evm.gas_recorder.gas_usage
@@ -87,6 +97,7 @@ impl EVMContext {
         transaction: Transaction,
         gas_price: U256,
         nested_index: usize,
+        is_static: bool,
     ) -> EVMContext {
         EVMContext {
             stack: Stack::new(),
@@ -113,6 +124,7 @@ impl EVMContext {
                 gas_usage: 0,
                 gas_refunds: 0,
             },
+            is_static: is_static
         }
     }
 
@@ -122,12 +134,8 @@ impl EVMContext {
 
         let result = {
             let mut result = ExecutionResult::Success;
-            if self.message.data.len() != 0 {
-                self.gas_recorder
-                    .record_gas(call_data_gas_cost(&self.message.data));
-            }
-            if debug {
-                println!("Call Data Gas Cost: {:x}", self.gas_recorder.gas_usage);
+            if self.program.len() == 0 {
+                self.stopped = true;
             }
             while !self.stopped {
                 result = self.execute_next_instruction(runtime, debug);

@@ -1,5 +1,6 @@
 # TODO
 
+- [_] Fix calling costs and split up function
 - [_] Fix Calldata load, Code load etc.
 - [_] Do general clean up
     - [_] Better error handling

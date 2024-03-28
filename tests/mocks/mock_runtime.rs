@@ -1,5 +1,5 @@
-use ethereum_evm::runtime::Runtime;
 use ethereum_evm::evm_logic::util::{h256_to_u256, keccak256, u256_to_h256};
+use ethereum_evm::runtime::Runtime;
 use hex::encode;
 use primitive_types::{H160, H256, U256};
 use rlp::{Encodable, RlpStream};
@@ -95,7 +95,7 @@ impl MockRuntime {
                             contract
                                 .storage
                                 .iter()
-                                .filter(|(_,value)| {**value != H256::zero()})
+                                .filter(|(_, value)| **value != H256::zero())
                                 .map(|(key, value)| (key, rlp::encode(&h256_to_u256(*value)))),
                         ),
                         code_hash: keccak256(&contract.code),
@@ -103,7 +103,10 @@ impl MockRuntime {
                         balance: contract.balance,
                         code_version: U256::zero(),
                     });
-                    println!("encoded_contract: {:x?}", encode(keccak256(&encoded_contract.to_vec())));
+                    println!(
+                        "encoded_contract: {:x?}",
+                        encode(keccak256(&encoded_contract.to_vec()))
+                    );
                     encoded_contract
                 })
             })
@@ -173,7 +176,11 @@ impl Runtime for MockRuntime {
     }
 
     fn read_original_storage(&self, address: U256, index: U256) -> H256 {
-        self.contracts[&address].storage.get(&u256_to_h256(index)).unwrap_or(&H256::zero()).clone()
+        self.contracts[&address]
+            .storage
+            .get(&u256_to_h256(index))
+            .unwrap_or(&H256::zero())
+            .clone()
     }
     fn read_storage(&self, address: U256, index: U256) -> H256 {
         self.current_context.as_ref().unwrap().contracts[&address]
@@ -292,6 +299,38 @@ impl Runtime for MockRuntime {
             .nonce += U256::from(1);
     }
 
+    fn create_contract(&mut self, address: U256, code: Vec<u8>) {
+        println!("Created1: {:?}", address);
+        let contract = Contract {
+            balance: U256::from(0 as u64),
+            code_size: U256::from(code.len() as u64),
+            code_hash: keccak256(&code),
+            code: code,
+            nonce: U256::from(0 as u64),
+            storage: BTreeMap::new(),
+            is_deleted: false,
+            is_cold: false,
+            hot_keys: HashSet::new(),
+        };
+        println!("Created2: {:?}", address);
+        match &mut self.current_context {
+            Some(context) => {
+                context.as_mut().contracts.insert(address, contract);
+            }
+            None => {}
+        };
+    }
+    fn set_contract_code(&mut self, address: U256, code: Vec<u8>) {
+        match &mut self.current_context {
+            Some(context) => {
+                let contract = context.as_mut().contracts.get_mut(&address).unwrap();
+                contract.code = code.clone();
+                contract.code_hash = keccak256(&code);
+                contract.code_size = U256::from(code.len() as u64);
+            }
+            None => {}
+        };
+    }
     // Modify context stack
     fn add_context(&mut self) {
         // Could be slightly faster with a swap perhaps
@@ -299,7 +338,7 @@ impl Runtime for MockRuntime {
             Some(context) => {
                 self.current_context = Some(Box::new(Context {
                     contracts: context.contracts.clone(),
-                    prev_context: Some(context)
+                    prev_context: Some(context),
                 }));
             }
             None => {

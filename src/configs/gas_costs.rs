@@ -54,27 +54,9 @@ pub enum DynamicCosts {
     },
     Call {
         value: U256,
-        gas: U256,
         target_is_cold: bool,
-        target_exists: bool,
-    },
-    CallCode {
-        /// Call value.
-        value: U256,
-        /// Call gas.
-        gas: U256,
-        /// True if target has not been previously accessed in this transaction
-        target_is_cold: bool,
-        /// Whether the target exists.
-        target_exists: bool,
-    },
-    DelegateCall {
-        /// Call gas.
-        gas: U256,
-        /// True if target has not been previously accessed in this transaction
-        target_is_cold: bool,
-        /// Whether the target exists.
-        target_exists: bool,
+        empty_account: bool,
+        is_delegate: bool,
     },
     StaticCall {
         /// Call gas.
@@ -102,9 +84,9 @@ pub enum DynamicCosts {
     /// Gas cost for `LOG`.
     Log {
         /// Topic length.
-        n: u8,
+        topic_length: u8,
         /// Data length.
-        len: U256,
+        size: usize,
     },
     /// Gas cost for `EXTCODECOPY`.
     Exp {
@@ -114,6 +96,9 @@ pub enum DynamicCosts {
     Create2 {
         /// Length.
         len: U256,
+    },
+    Create {
+        deployed_code_size: usize,
     },
     /// Gas cost for `SLOAD`.
     SLoad {
@@ -156,38 +141,23 @@ impl DynamicCosts {
             }
             DynamicCosts::Call {
                 value,
-                gas,
+                empty_account,
                 target_is_cold,
-                target_exists,
+                is_delegate,
             } => {
-                if *value != ZERO {
-                    static_costs::G_CALL_VALUE
+
+                0 + if *target_is_cold {
+                    static_costs::G_COLD_ACCOUNT_ACCESS
                 } else {
-                    static_costs::G_CALL_STIPEND
-                }
+                    static_costs::G_WARM_ACCESS
+                } +
+                if !value.eq(&ZERO) & !is_delegate {
+                    static_costs::G_CALL_VALUE - static_costs::G_CALL_STIPEND
+                } else {0} +
+                if *empty_account {
+                    static_costs::G_NEW_ACCOUNT
+                } else {0}
             }
-            DynamicCosts::CallCode {
-                value,
-                gas,
-                target_is_cold,
-                target_exists,
-            } => {
-                if *value != ZERO {
-                    static_costs::G_CALL_VALUE
-                } else {
-                    static_costs::G_CALL_STIPEND
-                }
-            }
-            DynamicCosts::DelegateCall {
-                gas,
-                target_is_cold,
-                target_exists,
-            } => static_costs::G_CALL_STIPEND,
-            DynamicCosts::StaticCall {
-                gas,
-                target_is_cold,
-                target_exists,
-            } => static_costs::G_CALL_STIPEND,
             DynamicCosts::SStore {
                 original,
                 current,
@@ -203,10 +173,10 @@ impl DynamicCosts {
             DynamicCosts::Keccak256 { len } => {
                 static_costs::G_KECCAK256 + (len.div_ceil(32)) * static_costs::G_KECCAK256_WORD
             }
-            DynamicCosts::Log { n, len } => {
+            DynamicCosts::Log { topic_length, size } => {
                 static_costs::G_LOG
-                    + static_costs::G_LOG_TOPIC * (*n as u64)
-                    + static_costs::G_LOG_DATA * (len.as_u64() / 32)
+                    + static_costs::G_LOG_TOPIC * (*topic_length as u64)
+                    + static_costs::G_LOG_DATA * (*size as u64)
             }
 
             DynamicCosts::Exp { power } => {
@@ -228,6 +198,9 @@ impl DynamicCosts {
                 } else {
                     static_costs::G_WARM_ACCESS
                 }
+            }
+            DynamicCosts::Create {deployed_code_size} => {
+                static_costs::G_CREATE + static_costs::G_KECCAK256_WORD * (*deployed_code_size as u64).div_ceil(32)
             }
             _ => 0,
         }

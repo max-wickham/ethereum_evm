@@ -48,6 +48,18 @@ pub trait Runtime {
     fn withdrawal(&mut self, source: U256, value: U256);
     fn increase_nonce(&mut self, address: U256);
 
+    // Create Contract
+    fn create_contract(
+        &mut self,
+        address: U256,
+        code: Vec<u8>,
+    );
+    fn set_contract_code(
+        &mut self,
+        address: U256,
+        code: Vec<u8>,
+    );
+
     fn add_context(&mut self);
     fn merge_context(&mut self);
     fn revert_context(&mut self);
