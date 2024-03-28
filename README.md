@@ -4,7 +4,7 @@ This is an implementation in Rust of the ethereum EVM. This library provides a b
 
 ## Tests
 
-This repo contains both some local tests as well as using the official Ethereum Test library. The official tests are included as a sub repo to make sure to clone sub repos in addition to the main repo before running tests. Currently about a third of the official arithmetic tests are passing.
+This repo contains both some local tests as well as using the official Ethereum Test library. The official tests are included as a sub repo to make sure to clone sub repos in addition to the main repo before running tests. Currently about a third of the official arithmetic tests are passing. The JSON passing of tests is currently very inefficient as tests are repassed many times, this will be fixed soon.
 
 ## Project State
 
