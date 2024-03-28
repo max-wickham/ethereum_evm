@@ -1,6 +1,7 @@
 # TODO
 
-- [_] Refactor create and create 2, also get create to work
+- [x] Fix memory problems on the return (when size is 0)
+- [x] Refactor create and create 2, also get create to work
 - [x] Fix calling costs and split up function
 - [x] Fix Calldata load, Code load etc.
 - [_] Do general clean up
@@ -9,12 +10,12 @@
     - [x] Remove lambdas
     - [x] Move costs into a config
     - [_] Separate gas cost logic from main logic
-- [_] Get Memory Buffer tests to work
+- [x] Get Memory Buffer tests to work
     - Check CODECOPY
     - Check CALLDATACOPY
     - Check initial costs
 - [_] Make gas refunds handle reverts
-- [_] Change to H256 instead of U256 where needed
+- [_] Change to H256 instead of U256 where needed (and H160)
 - [_] Only pass JSON once in tests, (maybe pass in the proc macro and then directly insert in the code)
 - [x] Replace macro with method in decoder?
 - [x] Replace closure with macro

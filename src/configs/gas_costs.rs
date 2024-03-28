@@ -201,6 +201,8 @@ impl DynamicCosts {
                 }
             }
             DynamicCosts::Create {deployed_code_size} => {
+
+                println!("Code Size {}",deployed_code_size);
                 static_costs::G_CREATE + static_costs::G_KECCAK256_WORD * (*deployed_code_size as u64).div_ceil(32)
             }
             _ => 0,

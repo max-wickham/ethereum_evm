@@ -13,7 +13,7 @@ macro_rules! debug_match {
                                 "PC : {:<5} | Opcode: {:<15} | Gas: {:<10}",
                                 $evm_val.program_counter,
                                 opcodes::OPCODE_MAP[&($opcode as u8)],
-                                format!{"{:x}",$evm_val.gas_input - $evm_val.gas_recorder.clone().gas_usage as u64}
+                                format!{"{:x}",$evm_val.gas_input as u64 - $evm_val.gas_recorder.clone().gas_usage as u64}
                             );
                         }
                         $block
@@ -112,7 +112,7 @@ macro_rules! pop_u64 {
             Ok(value) => value,
         };
         if result > U256::from(u64::MAX) {
-            println!("Error: {:?}", Error::InsufficientGas);
+            println!("U256 to large: {:?}", Error::InsufficientGas);
             // This would cause an out of gas error
             $evm_val.gas_recorder.gas_usage = $evm_val.gas_input as usize;
             // TODO refactor this away as unclear
@@ -134,6 +134,7 @@ pub(crate) use pop_usize;
 macro_rules! return_if_gas_too_high {
     ($gas_recorder:expr) => {
         if !$gas_recorder.validate_gas() {
+            println!("Error gas: {:?}", Error::InsufficientGas);
             $gas_recorder.gas_usage = $gas_recorder.gas_input;
             return ExecutionResult::Err(Error::InsufficientGas);
         }

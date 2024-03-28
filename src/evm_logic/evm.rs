@@ -1,11 +1,11 @@
 mod call;
+mod create;
 mod decoder;
 pub mod macros;
-mod create;
 
 use crate::evm_logic::evm::macros::{break_if_error, return_if_error};
 use crate::evm_logic::gas_calculator::{call_data_gas_cost, GasRecorder};
-use crate::result::ExecutionResult;
+use crate::result::{Error, ExecutionResult, ExecutionSuccess};
 use crate::runtime::Runtime;
 use primitive_types::U256;
 
@@ -33,13 +33,13 @@ pub struct EVMContext {
     transaction: Transaction,
     message: Message,
     last_return_data: Memory,
+    // TODO refactor this away into the result
     result: Memory,
     gas_input: u64,
     gas_price: U256,
-    stopped: bool,
     nested_index: usize,
     gas_recorder: GasRecorder,
-    is_static: bool
+    is_static: bool,
 }
 
 impl EVMContext {
@@ -119,14 +119,13 @@ impl EVMContext {
             result: Memory::new(),
             gas_input: gas,
             gas_price: gas_price,
-            stopped: false,
             nested_index: nested_index,
             gas_recorder: GasRecorder {
                 gas_input: gas as usize,
                 gas_usage: 0,
                 gas_refunds: 0,
             },
-            is_static: is_static
+            is_static: is_static,
         }
     }
 
@@ -135,24 +134,46 @@ impl EVMContext {
         runtime.add_context();
 
         let result = {
-            let mut result = ExecutionResult::Success;
-            if self.program.len() == 0 {
-                self.stopped = true;
-            }
-            while !self.stopped {
-                result = self.execute_next_instruction(runtime, debug);
-                break_if_error!(result);
+            let mut result = ExecutionResult::Success(ExecutionSuccess::Unknown);
+            if self.program.len() != 0 {
+                loop {
+                    result = self.execute_next_instruction(runtime, debug);
+                    match result {
+                        ExecutionResult::Err(_) => {
+                            break;
+                        }
+                        ExecutionResult::Success(success) => match success {
+                            ExecutionSuccess::Return | ExecutionSuccess::Stop => {
+                                break;
+                            }
+                            _ => {}
+                        },
+                    }
+                    break_if_error!(result);
+                }
+            } else {
+                result = ExecutionResult::Err(Error::InvalidMemSize);
             }
             if debug {
                 println!(
                     "Program Gas Usage : {:x}",
-                    self.gas_input - self.gas_recorder.gas_usage as u64
+                    if self.gas_recorder.gas_usage > self.gas_input as usize {
+                        self.gas_input as u64
+                    } else {
+                        self.gas_input - self.gas_recorder.gas_usage as u64
+                    }
                 );
             }
             result
         };
+        self.gas_recorder.gas_usage = if self.gas_recorder.gas_usage > self.gas_input as usize {
+            self.gas_input as u64
+        } else {
+            self.gas_recorder.gas_usage as u64
+        } as usize;
+        println!("Sub Gas Usage {:x}", self.gas_recorder.gas_usage);
         match result {
-            ExecutionResult::Success => {
+            ExecutionResult::Success(_) => {
                 runtime.merge_context();
             }
             ExecutionResult::Err(_) => {
@@ -171,13 +192,18 @@ impl EVMContext {
     ) -> ExecutionResult {
         decoder::decode_instruction(self, runtime, debug)
     }
+
     #[inline]
     fn check_gas_usage(&self) -> ExecutionResult {
-        match (self.gas_recorder.gas_usage - self.gas_recorder.gas_refunds)
+        match (self.gas_recorder.gas_usage
+            - self
+                .gas_recorder
+                .gas_refunds
+                .min(self.gas_recorder.gas_usage))
             > self.gas_input as usize
         {
             true => ExecutionResult::Err(crate::result::Error::InsufficientGas),
-            false => ExecutionResult::Success,
+            false => ExecutionResult::Success(ExecutionSuccess::Unknown),
         }
     }
 }

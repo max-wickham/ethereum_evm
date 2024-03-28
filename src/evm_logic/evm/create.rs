@@ -3,14 +3,17 @@ use sha3::{Digest, Keccak256};
 
 use crate::{
     configs::gas_costs::DynamicCosts,
-    evm_logic::{evm::{call::CallArgs, macros::return_if_error_in_tuple}, util::{h256_to_u256, keccak256, u256_to_array, u256_to_h256, ZERO}},
-    result::{Error, ExecutionResult},
+    evm_logic::{
+        evm::{call::CallArgs, macros::return_if_error_in_tuple},
+        util::{h256_to_u256, keccak256, u256_to_array, u256_to_h256, ZERO},
+    },
+    result::{Error, ExecutionResult, ExecutionSuccess},
     runtime::{self, Runtime},
 };
 
 use super::{
     call::{self, make_call},
-    macros::{pop, return_if_error},
+    macros::{pop, pop_u64, return_if_error},
     EVMContext,
 };
 
@@ -23,32 +26,36 @@ pub fn create(
     offset: usize,
     size: usize,
 ) -> ExecutionResult {
-    let code = return_if_error_in_tuple!(evm.memory.read_bytes(offset, size, &mut evm.gas_recorder));
+    let code =
+        return_if_error_in_tuple!(evm.memory.read_bytes(offset, size, &mut evm.gas_recorder));
+    println!("Code {:?}", code);
     runtime.create_contract(address, code);
     println!("Created: {:?}", address);
-    // evm.stack.push(ZERO);
-    // evm.stack.push(ZERO);
-    // evm.stack.push(ZERO);
-    // evm.stack.push(value);
-    // evm.stack.push(ZERO);
-    // evm.stack.push(address);
-    // evm.stack.push(U256::from(
-    //     evm.gas_input - evm.gas_recorder.gas_usage as u64,
-    // ));
-    make_call(evm, runtime, debug, CallArgs{
-        gas: evm.gas_input - evm.gas_recorder.gas_usage as u64,
-        contract_address: address,
-        code_address: address,
-        caller_address: evm.message.caller,
-        value: ZERO,
-        args_offset: 0,
-        args_size: 0,
-        ret_offset: 0,
-        ret_size: 0,
-    }, false);
+    let result = make_call(
+        evm,
+        runtime,
+        debug,
+        CallArgs {
+            gas: evm.gas_input - evm.gas_recorder.gas_usage as u64,
+            contract_address: address,
+            code_address: address,
+            caller_address: evm.message.caller,
+            value: ZERO,
+            args_offset: 0,
+            args_size: 0,
+            ret_offset: 0,
+            ret_size: 0,
+        },
+        false,
+    );
     // return_if_error!(make_call(evm, runtime, debug, false, true));
     // Undo the call gas cost
     // evm.gas_recorder.gas_usage -= 100;
+    runtime.increase_nonce(evm.message.caller);
+    runtime.increase_nonce(address);
+    if result.is_result_with_return() {
+        runtime.set_contract_code(address, evm.last_return_data.bytes.clone());
+    }
     println!("Created: {:?}", address);
     let deployed_code_size = runtime.code_size(address).as_usize();
     println!("Deployed code size: {}", deployed_code_size);
@@ -65,33 +72,29 @@ pub fn create(
         }
         .cost(),
     );
-    runtime.increase_nonce(evm.message.caller);
-    runtime.increase_nonce(address);
-    runtime.set_contract_code(address, evm.last_return_data.bytes.clone());
-    ExecutionResult::Success
+    ExecutionResult::Success(ExecutionSuccess::Unknown)
 }
 
 pub fn create_1(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool) -> ExecutionResult {
-    let (value, offset, size) = (pop!(evm), pop!(evm).as_usize(), pop!(evm).as_usize());
+    let (value, offset, size) = (pop!(evm), pop_u64!(evm) as usize, pop_u64!(evm) as usize);
     let sender_address = evm.message.caller;
     let sender_nonce = runtime.nonce(sender_address);
-    let mut encodable = u256_to_array(sender_address).to_vec();
-    encodable.append(&mut u256_to_array(sender_nonce).to_vec());
-    let address: U256 = h256_to_u256(keccak256(&rlp::encode(&encodable).to_vec()));
-    let mut address_mod = Vec::from([0u8; 12]);
-    address_mod.append(&mut u256_to_array(address).as_slice()[12..].to_vec());
-    let address = U256::from_big_endian(address_mod.as_slice());
-    create(evm, address, runtime, debug, value, offset, size)
+	let mut stream = rlp::RlpStream::new_list(2);
+    stream.append(&sender_address);
+	stream.append(&sender_nonce);
+	let address: H160 = H256::from_slice(Keccak256::digest(&stream.out()).as_slice()).into();
+    create(evm, h256_to_u256(H256::from(address)), runtime, debug, value, offset, size)
 }
 
 pub fn create_2(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool) -> ExecutionResult {
     let (value, offset, size, salt) = (
         pop!(evm),
-        pop!(evm).as_usize(),
-        pop!(evm).as_usize(),
+        pop_u64!(evm) as usize,
+        pop_u64!(evm) as usize,
         pop!(evm),
     );
-    let code = return_if_error_in_tuple!(evm.memory.read_bytes(offset, size, &mut evm.gas_recorder));
+    let code =
+        return_if_error_in_tuple!(evm.memory.read_bytes(offset, size, &mut evm.gas_recorder));
     let code_hash = keccak256(&code);
     println!("Code Hash: {:x}", code_hash);
     let address: H160 = {
@@ -107,5 +110,13 @@ pub fn create_2(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool) -
         value, offset, size, salt
     );
     println!("Address: {:x}", address);
-    create(evm, h256_to_u256(H256::from(address)), runtime, debug, value, offset, size)
+    create(
+        evm,
+        h256_to_u256(H256::from(address)),
+        runtime,
+        debug,
+        value,
+        offset,
+        size,
+    )
 }

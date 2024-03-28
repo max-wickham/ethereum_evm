@@ -1,15 +1,19 @@
 use crate::configs::bytecode_spec::opcodes;
 use crate::configs::gas_costs::{static_costs, DynamicCosts};
-use crate::evm_logic::evm::call::{call, call_code, delegate_call, make_call, static_call};
-use crate::evm_logic::evm::create::{create, create_1, create_2};
-use crate::evm_logic::evm::macros::{debug_match, pop, pop_u64, pop_usize, return_error_if_static, return_if_error, return_if_error_in_tuple, return_if_gas_too_high};
+use crate::evm_logic::evm::call::{call, call_code, delegate_call, static_call};
+use crate::evm_logic::evm::create::{create_1, create_2};
+use crate::evm_logic::evm::macros::{
+    debug_match, pop, pop_u64, pop_usize, return_error_if_static, return_if_error,
+    return_if_error_in_tuple, return_if_gas_too_high,
+};
 use crate::evm_logic::evm::EVMContext;
+use crate::evm_logic::gas_calculator::GasRecorder;
 use crate::evm_logic::state::memory::Memory;
 use crate::evm_logic::util::{
     self, h256_to_u256, int256_to_uint256, keccak256, u256_to_h256, u256_to_uint256,
     uint256_to_int256, MAX_UINT256, MAX_UINT256_COMPLEMENT, ZERO, ZERO_H256,
 };
-use crate::result::{ExecutionResult, Error};
+use crate::result::{Error, ExecutionResult, ExecutionSuccess};
 use crate::runtime::Runtime;
 
 use num256::Uint256;
@@ -17,7 +21,11 @@ use primitive_types::U256;
 use std::ops::Rem;
 
 #[inline]
-pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool) -> ExecutionResult {
+pub fn decode_instruction(
+    evm: &mut EVMContext,
+    runtime: &mut impl Runtime,
+    debug: bool,
+) -> ExecutionResult {
     /*
     Run the next instruction, adjusting gas usage and return a bool that is true if okay, false if exception
     */
@@ -25,13 +33,16 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
     // Not a function as need to be able to return from caller function
 
     // Provides debug data around each branches block
+    if evm.program_counter > evm.program.len() - 1 {
+        return ExecutionResult::Err(Error::Halted);
+    }
     let opcode: u8 = evm.program[evm.program_counter];
     debug_match!(evm, debug, opcode, {
 
         opcodes::STOP => {
             println!("STOP");
-            evm.stopped = true;
-            return ExecutionResult::Success;
+            return ExecutionResult::Success(ExecutionSuccess::Stop)
+            // return ExecutionResult::Success;
         },
 
         opcodes::ADD => {
@@ -283,9 +294,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
 
         opcodes::KECCAK256 => {
             let (offset, length) = (pop_u64!(evm), pop_u64!(evm));
-            println!("offset: {}, length: {}", offset, length);
             evm.gas_recorder.record_gas(DynamicCosts::Keccak256 { len: length}.cost());
-            println!("Gas: {}", DynamicCosts::Keccak256 { len: length }.cost());
             return_if_gas_too_high!(evm.gas_recorder);
             let bytes = return_if_error_in_tuple!(evm.memory.read_bytes(offset as usize, length as usize, &mut evm.gas_recorder));
             evm.stack.push(U256::from(keccak256(&bytes).as_bytes()));
@@ -348,8 +357,9 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
                 pop_usize!(evm),
             );
             evm.gas_recorder.record_gas(DynamicCosts::Copy { size_bytes: size}.cost());
-            evm.memory
-                .copy_from_bytes(&mut evm.message.data, offset, dest_offset, size, &mut evm.gas_recorder);
+            return_if_gas_too_high!(evm.gas_recorder);
+            return_if_error!(evm.memory
+                .copy_from_bytes(&mut evm.message.data, offset, dest_offset, size, &mut evm.gas_recorder));
         },
 
         opcodes::CODESIZE => {
@@ -364,8 +374,9 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
                 pop_usize!(evm),
             );
             evm.gas_recorder.record_gas(DynamicCosts::Copy { size_bytes: size}.cost());
-            evm.memory
-                .copy_from(&mut evm.program, offset, dest_offset, size, &mut evm.gas_recorder);
+            return_if_gas_too_high!(evm.gas_recorder);
+            return_if_error!(evm.memory
+                .copy_from(&mut evm.program, offset, dest_offset, size, &mut evm.gas_recorder));
         },
 
         opcodes::GASPRICE => {
@@ -387,15 +398,17 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
                 pop_usize!(evm),
                 pop_usize!(evm),
             );
-
+            println!("Addr: {}, dest_offset: {}, offset: {}, size: {}", addr, dest_offset, offset, size);
             evm.gas_recorder.record_gas(DynamicCosts::ExtCodeCopy { target_is_cold: runtime.is_cold(addr), size_bytes: size}.cost());
-            evm.memory.copy_from_bytes(
+            // return_if_gas_too_high!(evm.gas_recorder);
+            println!("Copying");
+            return_if_error!(evm.memory.copy_from_bytes(
                 &runtime.code(addr),
                 offset,
                 dest_offset,
                 size,
                 &mut evm.gas_recorder
-            );
+            ));
             runtime.mark_hot(addr);
         },
 
@@ -412,8 +425,15 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
                 pop_usize!(evm),
             );
             evm.gas_recorder.record_gas(DynamicCosts::Copy { size_bytes: size}.cost());
-            evm.memory
-                .copy_from(&mut evm.last_return_data, offset, dest_offset, size, &mut evm.gas_recorder);
+            println!("Gas: {}", DynamicCosts::Copy { size_bytes: size}.cost());
+            println!("Dest offset: {}, offset: {}, size: {}", dest_offset, offset, size);
+            return_if_gas_too_high!(evm.gas_recorder);
+            if offset + size > evm.last_return_data.len() {
+                evm.gas_recorder.record_gas(evm.gas_input as u64);
+                return ExecutionResult::Err(Error::InvalidMemoryAccess);
+            }
+            return_if_error!(evm.memory
+                .copy_from(&mut evm.last_return_data, offset, dest_offset, size, &mut evm.gas_recorder));
         },
 
         opcodes::EXTCODEHASH => {
@@ -483,13 +503,13 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
 
         opcodes::MSTORE => {
             let (offset, value) = (pop_usize!(evm), pop!(evm));
-            evm.memory.write(offset, value, &mut evm.gas_recorder);
+            return_if_error!(evm.memory.write(offset, value, &mut evm.gas_recorder));
             evm.gas_recorder.record_gas(3);
         },
 
         opcodes::MSTORE8 => {
             let (offset, value) = (pop_usize!(evm), pop!(evm));
-            evm.memory.write_u8(offset, (value & U256::from(0xFF as u64)).low_u32() as u8, &mut evm.gas_recorder);
+            return_if_error!(evm.memory.write_u8(offset, (value & U256::from(0xFF as u64)).low_u32() as u8, &mut evm.gas_recorder));
             evm.gas_recorder.record_gas(3);
         },
 
@@ -508,6 +528,7 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
         opcodes::SSTORE => {
             return_error_if_static!(evm);
             let (key, value) = (pop!(evm), pop!(evm));
+            println!("Key: {}, Value: {}", key, value);
             if !runtime.is_hot_index(evm.contract_address, key){
                 evm.gas_recorder.record_gas(2100);
                 runtime.mark_hot_index(evm.contract_address, key);
@@ -605,18 +626,20 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
                 topics.push(pop!(evm));
             }
             let mut log_mem = Memory::new();
-            log_mem.copy_from_with_local_cost(&mut evm.memory, offset, 0, size, &mut evm.gas_recorder);
+            return_if_error!(log_mem.copy_from_no_local_cost(&mut evm.memory, offset, 0, size, &mut evm.gas_recorder));
             evm.gas_recorder.record_gas(DynamicCosts::Log { topic_length: topics.len() as u8, size: size }.cost())
         },
 
         opcodes::CREATE => {
             return_error_if_static!(evm);
-            // return_if_error!(create(evm, runtime, debug));
+            return_if_error!(create_1(evm, runtime, debug));
         },
 
         opcodes::CALL => {
             return_error_if_static!(evm);
             return_if_error!(call(evm, runtime, debug));
+            return_if_gas_too_high!(evm.gas_recorder);
+            println!("Gas usage {:x}", evm.gas_recorder.gas_input - evm.gas_recorder.gas_usage);
         },
 
         opcodes::CALLCODE => {
@@ -625,9 +648,12 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
 
         opcodes::RETURN => {
             let (offset, size) = (pop_usize!(evm), pop_usize!(evm));
-            evm.result.set_length(size);
-            evm.result.copy_from_with_local_cost(&mut evm.memory, offset, 0, size, &mut evm.gas_recorder);
-            evm.stopped = true;
+            if size == 0 {
+                return_if_error!(evm.result.copy_from_without_cost(&mut evm.memory, offset, 0, size));
+            } else{
+                return_if_error!(evm.result.copy_from_no_local_cost(&mut evm.memory, offset, 0, size,&mut evm.gas_recorder));
+            }
+            return ExecutionResult::Success(ExecutionSuccess::Return)
         },
 
         opcodes::DELEGATECALL => {
@@ -643,11 +669,21 @@ pub fn decode_instruction(evm: &mut EVMContext, runtime: &mut impl Runtime, debu
 
         opcodes::STATICCALL => {
             return_if_error!(static_call(evm, runtime, debug));
+        },
+
+        opcodes::REVERT => {
+            let (offset, size) = (pop_u64!(evm) as usize, pop_u64!(evm) as usize);
+            if size == 0 {
+                return_if_error!(evm.result.copy_from_without_cost(&mut evm.memory, offset, 0, size));
+            } else{
+                return_if_error!(evm.result.copy_from_no_local_cost(&mut evm.memory, offset, 0, size,&mut evm.gas_recorder));
+            }
+            return ExecutionResult::Err(Error::Revert);
         }
     });
 
     // return_if_error!(evm.program_counter > 1000000 || evm.nested_index > 1024);
     return_if_error!(evm.check_gas_usage());
     evm.program_counter += 1;
-    return ExecutionResult::Success;
+    return ExecutionResult::Success(ExecutionSuccess::Unknown);
 }

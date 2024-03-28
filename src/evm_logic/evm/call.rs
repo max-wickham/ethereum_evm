@@ -6,10 +6,13 @@ Should be converted to function once proper error handling is introduced
 use primitive_types::U256;
 use serde::de::value;
 
+use super::macros::{pop_u64, return_if_error};
 use super::{macros::pop, EVMContext, Message};
 use crate::configs::gas_costs::{static_costs, DynamicCosts};
+use crate::evm_logic::evm::macros::return_if_gas_too_high;
+use crate::evm_logic::state::memory::Memory;
 use crate::evm_logic::util::ZERO;
-use crate::result::{Error, ExecutionResult};
+use crate::result::{Error, ExecutionResult, ExecutionSuccess};
 use crate::runtime::Runtime;
 
 #[inline]
@@ -18,15 +21,17 @@ pub fn call(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool) -> Ex
         pop!(evm).as_u64(),
         pop!(evm),
         pop!(evm),
-        pop!(evm).as_usize(),
-        pop!(evm).as_usize(),
-        pop!(evm).as_usize(),
-        pop!(evm).as_usize(),
+        pop_u64!(evm) as usize,
+        pop_u64!(evm) as usize,
+        pop_u64!(evm) as usize,
+        pop_u64!(evm) as usize,
     );
-    if value.eq(&ZERO) {
-        gas += static_costs::G_CALL_STIPEND;
-    }
-    let mut call_args = CallArgs {
+    println!("Ret offset {:x}", ret_offset);
+    println!("Ret ret_size {:x}", ret_size);
+    // if value.eq(&ZERO) {
+    //     gas += static_costs::G_CALL_STIPEND;
+    // }
+    let call_args = CallArgs {
         gas: gas,
         code_address: address,
         contract_address: address,
@@ -37,7 +42,6 @@ pub fn call(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool) -> Ex
         ret_offset: ret_offset,
         ret_size: ret_size,
     };
-    make_call(evm, runtime, debug, call_args, false);
     evm.gas_recorder.record_gas(
         DynamicCosts::Call {
             value: value,
@@ -50,7 +54,24 @@ pub fn call(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool) -> Ex
         }
         .cost(),
     );
-    ExecutionResult::Success
+    println!("Call costs {}", DynamicCosts::Call {
+        value: value,
+        target_is_cold: runtime.is_cold(address),
+        empty_account: !value.eq(&U256::zero())
+            && runtime.nonce(address).eq(&U256::zero())
+            && runtime.code_size(address).eq(&U256::zero())
+            && runtime.balance(address).eq(&U256::zero()),
+        is_delegate: false,
+    }
+    .cost());
+    if evm.gas_recorder.gas_input > evm.gas_recorder.gas_usage {
+        println!("Gas usage {:x}", evm.gas_recorder.gas_input - evm.gas_recorder.gas_usage);
+    }
+    return_if_gas_too_high!(evm.gas_recorder);
+    match make_call(evm, runtime, debug, call_args, false) {
+        ExecutionResult::Err(_) => ExecutionResult::Success(ExecutionSuccess::RevertedTransaction),
+        ExecutionResult::Success(_) => ExecutionResult::Success(ExecutionSuccess::Unknown)
+    }
 }
 
 #[inline]
@@ -59,14 +80,14 @@ pub fn call_code(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool) 
         pop!(evm).as_u64(),
         pop!(evm),
         pop!(evm),
-        pop!(evm).as_usize(),
-        pop!(evm).as_usize(),
-        pop!(evm).as_usize(),
-        pop!(evm).as_usize(),
+        pop_u64!(evm) as usize,
+        pop_u64!(evm) as usize,
+        pop_u64!(evm) as usize,
+        pop_u64!(evm) as usize,
     );
-    if value.eq(&ZERO) {
-        gas += static_costs::G_CALL_STIPEND;
-    }
+    // if value.eq(&ZERO) {
+    //     gas += static_costs::G_CALL_STIPEND;
+    // }
     let call_args = CallArgs {
         gas: gas,
         code_address: address,
@@ -78,7 +99,6 @@ pub fn call_code(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool) 
         ret_offset: ret_offset,
         ret_size: ret_size,
     };
-    make_call(evm, runtime, debug, call_args, false);
     evm.gas_recorder.record_gas(
         DynamicCosts::Call {
             value: value,
@@ -91,7 +111,11 @@ pub fn call_code(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool) 
         }
         .cost(),
     );
-    ExecutionResult::Success
+    return_if_gas_too_high!(evm.gas_recorder);
+    match make_call(evm, runtime, debug, call_args, false) {
+        ExecutionResult::Err(_) => ExecutionResult::Success(ExecutionSuccess::RevertedTransaction),
+        ExecutionResult::Success(_) => ExecutionResult::Success(ExecutionSuccess::Unknown)
+    }
 }
 
 #[inline]
@@ -103,10 +127,10 @@ pub fn delegate_call(
     let (gas, address, args_offset, args_size, ret_offset, ret_size) = (
         pop!(evm).as_u64(),
         pop!(evm),
-        pop!(evm).as_usize(),
-        pop!(evm).as_usize(),
-        pop!(evm).as_usize(),
-        pop!(evm).as_usize(),
+        pop_u64!(evm) as usize,
+        pop_u64!(evm) as usize,
+        pop_u64!(evm) as usize,
+        pop_u64!(evm) as usize,
     );
     let call_args = CallArgs {
         gas: gas,
@@ -119,7 +143,6 @@ pub fn delegate_call(
         ret_offset: ret_offset,
         ret_size: ret_size,
     };
-    make_call(evm, runtime, debug, call_args, false);
     evm.gas_recorder.record_gas(
         DynamicCosts::Call {
             value: evm.message.value,
@@ -132,7 +155,11 @@ pub fn delegate_call(
         }
         .cost(),
     );
-    ExecutionResult::Success
+    return_if_gas_too_high!(evm.gas_recorder);
+    match make_call(evm, runtime, debug, call_args, false) {
+        ExecutionResult::Err(_) => ExecutionResult::Success(ExecutionSuccess::RevertedTransaction),
+        ExecutionResult::Success(_) => ExecutionResult::Success(ExecutionSuccess::Unknown)
+    }
 }
 
 
@@ -141,10 +168,10 @@ pub fn static_call(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool
     let (mut gas, address, args_offset, args_size, ret_offset, ret_size) = (
         pop!(evm).as_u64(),
         pop!(evm),
-        pop!(evm).as_usize(),
-        pop!(evm).as_usize(),
-        pop!(evm).as_usize(),
-        pop!(evm).as_usize(),
+        pop_u64!(evm) as usize,
+        pop_u64!(evm) as usize,
+        pop_u64!(evm) as usize,
+        pop_u64!(evm) as usize,
     );
     let mut call_args = CallArgs {
         gas: gas,
@@ -157,7 +184,6 @@ pub fn static_call(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool
         ret_offset: ret_offset,
         ret_size: ret_size,
     };
-    make_call(evm, runtime, debug, call_args, true);
     evm.gas_recorder.record_gas(
         DynamicCosts::Call {
             value: ZERO,
@@ -167,8 +193,12 @@ pub fn static_call(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool
         }
         .cost(),
     );
+    return_if_gas_too_high!(evm.gas_recorder);
     runtime.mark_hot(address);
-    ExecutionResult::Success
+    match make_call(evm, runtime, debug, call_args, true) {
+        ExecutionResult::Err(_) => ExecutionResult::Success(ExecutionSuccess::RevertedTransaction),
+        ExecutionResult::Success(_) => ExecutionResult::Success(ExecutionSuccess::Unknown)
+    }
 }
 
 
@@ -191,11 +221,15 @@ pub fn make_call(
     debug: bool,
     args: CallArgs,
     is_static: bool
-) {
+) -> ExecutionResult {
     let code: Vec<u8> = runtime.code(args.code_address);
     let gas = args
         .gas
         .min((evm.gas_input - evm.gas_recorder.gas_usage.clone() as u64) * 63 / 64);
+    if args.args_offset.checked_add( args.args_size).is_none() || (args.args_offset + args.args_size > evm.memory.bytes.len()) {
+        evm.gas_recorder.record_gas(evm.gas_recorder.gas_input as u64);
+        return ExecutionResult::Err(Error::InvalidMemSize);
+    }
     let mut sub_evm = EVMContext::create_sub_context(
         args.contract_address,
         Message {
@@ -210,8 +244,11 @@ pub fn make_call(
         evm.nested_index + 1,
         is_static
     );
+    println!("--------------");
     let execution_result = sub_evm.execute_program(runtime, debug);
-    evm.last_return_data = sub_evm.result;
+    if match execution_result { ExecutionResult::Err(err) => match err { Error::Revert => {true}, _ => {false}}, _ => {true} } {
+        evm.last_return_data = sub_evm.result;
+        println!("Copy Result");
     evm.memory.copy_from(
         &mut evm.last_return_data,
         0,
@@ -219,12 +256,27 @@ pub fn make_call(
         args.ret_size,
         &mut evm.gas_recorder,
     );
-    evm.gas_recorder
-        .record_gas((sub_evm.gas_recorder.gas_usage - sub_evm.gas_recorder.gas_refunds) as u64);
+    } else {
+        evm.last_return_data = Memory::new();
+    }
+    // println!("Gas usage {:x}", evm.gas_recorder.gas_input - evm.gas_recorder.gas_usage + evm.gas_recorder.gas_refunds);
+    println!("Execution Result {:?}", execution_result);
+    if let ExecutionResult::Success(_) = execution_result {
+        println!("Merging");
+        evm.gas_recorder.merge(&sub_evm.gas_recorder);
+    } else {
+        evm.gas_recorder.record_gas(sub_evm.gas_recorder.gas_usage as u64);
+    }
+    // evm.gas_recorder
+    //     .record_gas((sub_evm.gas_recorder.gas_usage - sub_evm.gas_recorder.gas_refunds.min(sub_evm.gas_recorder.gas_usage)) as u64);
     evm.stack.push(U256::from(match execution_result {
-        ExecutionResult::Success => true,
+        ExecutionResult::Success(_) => true,
         _ => false,
     } as u64));
+    if evm.gas_recorder.gas_input > evm.gas_recorder.gas_usage {
+        println!("Gas usage 1 {:x}", evm.gas_recorder.gas_input - evm.gas_recorder.gas_usage);
+    }
+    execution_result
 }
 
 // #[inline]
@@ -241,10 +293,10 @@ pub fn make_call(
 //         (gas, address, args_offset, args_size, ret_offset, ret_size) = (
 //             pop!(evm).as_u64(),
 //             pop!(evm),
-//             pop!(evm).as_usize(),
-//             pop!(evm).as_usize(),
-//             pop!(evm).as_usize(),
-//             pop!(evm).as_usize(),
+//             pop_u64!(evm) as usize,
+//             pop_u64!(evm) as usize,
+//             pop_u64!(evm) as usize,
+//             pop_u64!(evm) as usize,
 //         );
 //         value = evm.message.value;
 //     } else {
@@ -260,10 +312,10 @@ pub fn make_call(
 //             pop!(evm).as_u64(),
 //             pop!(evm),
 //             pop!(evm),
-//             pop!(evm).as_usize(),
-//             pop!(evm).as_usize(),
-//             pop!(evm).as_usize(),
-//             pop!(evm).as_usize(),
+//             pop_u64!(evm) as usize,
+//             pop_u64!(evm) as usize,
+//             pop_u64!(evm) as usize,
+//             pop_u64!(evm) as usize,
 //         );
 //     }
 //     println!("Calling");

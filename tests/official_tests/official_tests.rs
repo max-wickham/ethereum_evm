@@ -105,7 +105,7 @@ pub fn run_test(test: &TestState, debug: bool) {
     // send value the wallet
     runtime.increase_nonce(test.transaction.sender);
     match result {
-        ExecutionResult::Success => {
+        ExecutionResult::Success(_) => {
             runtime.deposit(test.transaction.to, test.transaction.value);
             // withdraw the value from the sender
             runtime.withdrawal(test.transaction.sender, test.transaction.value);
@@ -137,15 +137,19 @@ pub fn run_test(test: &TestState, debug: bool) {
 // );
 
 // generate_official_tests_from_folder!(
-//     "./tests/official_tests/tests/GeneralStateTests/stRandom"
+//     "./tests/official_tests/tests/GeneralStateTests/VMTests/vmPerformance"
 // );
 
-generate_official_tests_from_file!(
-    "./tests/official_tests/tests/GeneralStateTests/stMemoryTest/buffer.json"
-);
+// generate_official_tests_from_file!(
+//     "./tests/official_tests/tests/GeneralStateTests/stMemoryTest/buffer.json"
+// );
+// generate_official_tests_from_file!(
+//     "./tests/official_tests/tests/GeneralStateTests/stMemoryTest/mem32kb-33.json"
+// );
 // generate_official_tests_from_file!(
 //     "./tests/official_tests/tests/GeneralStateTests/VMTests/vmArithmeticTest/add.json"
 // );
-// generate_official_tests_from_folder!(
-//     "./tests/official_tests/tests/GeneralStateTests/VMTests/vmArithmeticTest"
-// );
+// generate_official_tests_froms
+generate_official_tests_from_folder!(
+    "./tests/official_tests/tests/GeneralStateTests/VMTests/vmBitwiseLogicOperation"
+);
