@@ -1,16 +1,16 @@
 mod call;
 mod decoder;
-mod macros;
+pub mod macros;
 mod create;
 
 use crate::evm_logic::evm::macros::{break_if_error, return_if_error};
 use crate::evm_logic::gas_calculator::{call_data_gas_cost, GasRecorder};
 use crate::result::ExecutionResult;
 use crate::runtime::Runtime;
-use crate::state::memory::Memory;
-use crate::state::stack::Stack;
-
 use primitive_types::U256;
+
+use super::state::memory::Memory;
+use super::state::stack::Stack;
 
 #[derive(Clone)]
 struct Transaction {
@@ -105,6 +105,7 @@ impl EVMContext {
             program: Memory::from(
                 code,
                 &mut GasRecorder {
+                    gas_input: gas as usize,
                     gas_usage: 0,
                     gas_refunds: 0,
                 },
@@ -121,6 +122,7 @@ impl EVMContext {
             stopped: false,
             nested_index: nested_index,
             gas_recorder: GasRecorder {
+                gas_input: gas as usize,
                 gas_usage: 0,
                 gas_refunds: 0,
             },

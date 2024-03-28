@@ -171,6 +171,7 @@ impl DynamicCosts {
                 }
             }
             DynamicCosts::Keccak256 { len } => {
+                println!("Len in Keccak256: {}", len);
                 static_costs::G_KECCAK256 + (len.div_ceil(32)) * static_costs::G_KECCAK256_WORD
             }
             DynamicCosts::Log { topic_length, size } => {

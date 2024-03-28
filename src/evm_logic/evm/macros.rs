@@ -38,6 +38,29 @@ macro_rules! return_if_error {
 }
 pub(crate) use return_if_error;
 
+macro_rules! return_tuple_if_error {
+    ($evm_val:expr, $val:expr) => {
+        match $evm_val {
+            ExecutionResult::Err(err) => {
+                println!("Error: {:?}", err);
+                return (ExecutionResult::Err(err), $val)},
+            _ => {}
+        }
+    };
+}
+pub(crate) use return_tuple_if_error;
+
+macro_rules! return_if_error_in_tuple {
+    ($evm_val:expr) => {
+        match $evm_val.0 {
+            ExecutionResult::Err(err) => {
+                return ExecutionResult::Err(err)}
+            _ => {$evm_val.1}
+        }
+    };
+}
+pub(crate) use return_if_error_in_tuple;
+
 macro_rules! break_if_error {
     ($evm_val:expr) => {
         #[allow(dead_code)]
@@ -76,3 +99,44 @@ macro_rules! pop {
     }};
 }
 pub(crate) use pop;
+
+macro_rules! pop_u64 {
+    ($evm_val:tt) => {{
+        let result = $evm_val.stack.pop();
+        let result = match result {
+            Err(()) => {
+                println!("Error: {:?}", Error::InsufficientValuesOnStack);
+                return ExecutionResult::Err(Error::InsufficientValuesOnStack);
+            }
+
+            Ok(value) => value,
+        };
+        if result > U256::from(u64::MAX) {
+            println!("Error: {:?}", Error::InsufficientGas);
+            // This would cause an out of gas error
+            $evm_val.gas_recorder.gas_usage = $evm_val.gas_input as usize;
+            // TODO refactor this away as unclear
+            return ExecutionResult::Err(Error::InsufficientGas);
+        }
+        result.as_u64()
+    }};
+}
+pub(crate) use pop_u64;
+
+macro_rules! pop_usize {
+    ($evm_val:tt) => {{
+        pop_u64!($evm_val) as usize
+    }};
+}
+pub(crate) use pop_usize;
+
+
+macro_rules! return_if_gas_too_high {
+    ($gas_recorder:expr) => {
+        if !$gas_recorder.validate_gas() {
+            $gas_recorder.gas_usage = $gas_recorder.gas_input;
+            return ExecutionResult::Err(Error::InsufficientGas);
+        }
+    };
+}
+pub(crate) use return_if_gas_too_high;

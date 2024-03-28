@@ -5,6 +5,7 @@ pub enum Error {
     InsufficientValuesOnStack,
     InsufficientGas,
     ModifyStaticState,
+    InvalidMemSize,
 }
 
 #[derive(Copy, Clone, Debug)]

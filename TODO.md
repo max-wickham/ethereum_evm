@@ -1,11 +1,12 @@
 # TODO
 
-- [_] Fix calling costs and split up function
-- [_] Fix Calldata load, Code load etc.
+- [_] Refactor create and create 2, also get create to work
+- [x] Fix calling costs and split up function
+- [x] Fix Calldata load, Code load etc.
 - [_] Do general clean up
-    - [_] Better error handling
+    - [x] Better error handling
     - [x] Refactor where macros and functions are
-    - [_] Remove lambdas
+    - [x] Remove lambdas
     - [x] Move costs into a config
     - [_] Separate gas cost logic from main logic
 - [_] Get Memory Buffer tests to work
@@ -15,11 +16,11 @@
 - [_] Make gas refunds handle reverts
 - [_] Change to H256 instead of U256 where needed
 - [_] Only pass JSON once in tests, (maybe pass in the proc macro and then directly insert in the code)
-- [_] Replace macro with method in decoder?
+- [x] Replace macro with method in decoder?
 - [x] Replace closure with macro
 - [x] Move entire decode step into inline function
 - [?] Restructure code into a folder system
-- [_] More specific error handling
+- [x] More specific error handling
 - [x] Create better gas tracking, (especially for memory)
     - [x] Created gas tracker
     - [x] Apply gas tracker to memory operations
@@ -28,7 +29,7 @@
 - [_] Check the failure behavior of every instruction
 - [x] Create a helper proc macro that creates a map from opcode to string value
 
-- [_] Remove assembler
+- [_] Remove assembler? Maybe find an assembler crate
 - [_] Fix test proc to auto detect if a file or folder and auto search sub directories
 - [_] Allow specifying of a specific test in a file
 - [?] Get all arithmetic tests to pass

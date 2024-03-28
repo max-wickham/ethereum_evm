@@ -3,7 +3,7 @@ use sha3::{Digest, Keccak256};
 
 use crate::{
     configs::gas_costs::DynamicCosts,
-    evm_logic::{evm::call::CallArgs, util::{h256_to_u256, keccak256, u256_to_array, u256_to_h256, ZERO}},
+    evm_logic::{evm::{call::CallArgs, macros::return_if_error_in_tuple}, util::{h256_to_u256, keccak256, u256_to_array, u256_to_h256, ZERO}},
     result::{Error, ExecutionResult},
     runtime::{self, Runtime},
 };
@@ -23,7 +23,7 @@ pub fn create(
     offset: usize,
     size: usize,
 ) -> ExecutionResult {
-    let code = evm.memory.read_bytes(offset, size, &mut evm.gas_recorder);
+    let code = return_if_error_in_tuple!(evm.memory.read_bytes(offset, size, &mut evm.gas_recorder));
     runtime.create_contract(address, code);
     println!("Created: {:?}", address);
     // evm.stack.push(ZERO);
@@ -91,7 +91,7 @@ pub fn create_2(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool) -
         pop!(evm).as_usize(),
         pop!(evm),
     );
-    let code = evm.memory.read_bytes(offset, size, &mut evm.gas_recorder);
+    let code = return_if_error_in_tuple!(evm.memory.read_bytes(offset, size, &mut evm.gas_recorder));
     let code_hash = keccak256(&code);
     println!("Code Hash: {:x}", code_hash);
     let address: H160 = {

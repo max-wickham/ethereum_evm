@@ -16,11 +16,17 @@ pub fn call_data_gas_cost(data: &Vec<u8>) -> u64 {
 
 #[derive(Copy,Clone)]
 pub struct GasRecorder {
+    pub gas_input: usize,
     pub gas_usage: usize,
     pub gas_refunds: usize,
 }
 
 impl GasRecorder {
+
+    pub fn validate_gas(&self) -> bool {
+        self.gas_usage <= self.gas_input
+    }
+
     pub fn record_gas(&mut self, gas: u64) {
         self.gas_usage += gas as usize;
     }

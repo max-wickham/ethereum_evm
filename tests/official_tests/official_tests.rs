@@ -1,7 +1,5 @@
 use ethereum_evm::{
-    evm_logic::evm::EVMContext,
-    runtime::Runtime,
-    evm_logic::util::{keccak256, u256_to_h256},
+    evm_logic::{evm::EVMContext, util::{keccak256, u256_to_h256}}, result::ExecutionResult, runtime::Runtime
 };
 use primitive_types::U256;
 use std::{
@@ -85,7 +83,7 @@ pub fn run_test(test: &TestState, debug: bool) {
     runtime.add_context();
     println!("Message data size : {}", test.transaction.data.len());
     // Execute the transaction
-    let gas_usage = EVMContext::execute_transaction(
+    let (result, gas_usage) = EVMContext::execute_transaction(
         &mut runtime,
         test.transaction.to,
         test.transaction.sender,
@@ -94,7 +92,7 @@ pub fn run_test(test: &TestState, debug: bool) {
         test.transaction.value,
         test.transaction.data,
         debug,
-    ).1;
+    );
 
     // Calculate the gas usage
     let eth_usage = (gas_usage) * test.transaction.gas_price.unwrap_or_default().as_usize();
@@ -106,9 +104,14 @@ pub fn run_test(test: &TestState, debug: bool) {
     }
     // send value the wallet
     runtime.increase_nonce(test.transaction.sender);
-    runtime.deposit(test.transaction.to, test.transaction.value);
-    // withdraw the value from the sender
-    runtime.withdrawal(test.transaction.sender, test.transaction.value);
+    match result {
+        ExecutionResult::Success => {
+            runtime.deposit(test.transaction.to, test.transaction.value);
+            // withdraw the value from the sender
+            runtime.withdrawal(test.transaction.sender, test.transaction.value);
+        },
+        _ => {}
+    }
     // withdraw the gas usage from the sender
     runtime.withdrawal(test.transaction.sender, U256::from(eth_usage as u64));
     runtime.deposit(test.env.current_coinbase, U256::from(eth_usage as u64));

@@ -2,8 +2,8 @@ use std::ops::Index;
 
 use primitive_types::U256;
 
-use crate::evm_logic::{gas_calculator::GasRecorder, util::u256_to_array};
-
+use crate::{evm_logic::{evm::macros::{return_if_gas_too_high, return_tuple_if_error}, gas_calculator::GasRecorder, util::{u256_to_array, ZERO}}, result::{Error, ExecutionResult}};
+use crate::evm_logic::evm::macros::{break_if_error, return_if_error};
 pub struct Memory {
     pub bytes: Vec<u8>,
     pub max_index: usize,
@@ -25,7 +25,7 @@ impl Memory {
             bytes: bytes,
             max_index: 0,
         };
-        memory.expand(len, gas_recorder);
+        memory.expand(len, Some(gas_recorder));
         memory
     }
 
@@ -42,7 +42,7 @@ impl Memory {
         write_address: usize,
         length: usize,
         gas_recorder: &mut GasRecorder,
-    ) {
+    ) -> ExecutionResult {
         println!("Write addresses: {}", write_address);
         if write_address + length > self.max_index {
             println!("Expanding memory");
@@ -50,13 +50,14 @@ impl Memory {
             println!("read address: {}", read_address);
             println!("length: {}", length);
             println!("max index: {}", self.max_index);
-            self.expand(write_address + length, gas_recorder)
+            self.expand(write_address + length, Some(gas_recorder));
         }
         if memory.bytes.len() < read_address + length {
-            memory.expand(read_address + length, gas_recorder)
+            memory.expand(read_address + length, Some(gas_recorder));
         }
         self.bytes[write_address..write_address + length]
             .copy_from_slice(&memory.bytes[read_address..(read_address + length)]);
+        ExecutionResult::Success
     }
 
     #[inline]
@@ -67,10 +68,10 @@ impl Memory {
         write_address: usize,
         length: usize,
         gas_recorder: &mut GasRecorder,
-    ) {
+    ) -> ExecutionResult {
         println!("Write addresses: {}", write_address);
         if write_address + length > self.max_index {
-            self.expand(write_address + length, &mut GasRecorder{gas_usage: 0, gas_refunds: 0});
+            return_if_error!(self.expand(write_address + length, None));
         }
         if memory.bytes.len() < read_address + length {
             println!("Expanding memory");
@@ -78,10 +79,11 @@ impl Memory {
             println!("read address: {}", read_address);
             println!("length: {}", length);
             println!("max index: {}", self.max_index);
-            memory.expand(read_address + length, gas_recorder)
+            return_if_error!(memory.expand(read_address + length, Some(gas_recorder)));
         }
         self.bytes[write_address..write_address + length]
             .copy_from_slice(&memory.bytes[read_address..(read_address + length)]);
+        ExecutionResult::Success
     }
 
     #[inline]
@@ -92,9 +94,9 @@ impl Memory {
         write_address: usize,
         length: usize,
         gas_recorder: &mut GasRecorder,
-    ) {
+    ) -> ExecutionResult {
         if write_address + length > self.max_index {
-            self.expand(write_address + length, gas_recorder)
+            return_if_error!(self.expand(write_address + length, Some(gas_recorder)));
         }
         let (mut start_address, mut end_address) = (read_address, read_address + length);
         if start_address > bytes.len() {
@@ -105,6 +107,7 @@ impl Memory {
         }
         self.bytes[write_address..write_address + (end_address - start_address)]
             .copy_from_slice(&bytes[start_address..end_address]);
+        ExecutionResult::Success
     }
 
     #[inline]
@@ -114,51 +117,53 @@ impl Memory {
     }
 
     #[inline]
-    pub fn read(&mut self, address: usize, gas_recorder: &mut GasRecorder) -> U256 {
+    pub fn read(&mut self, address: usize, gas_recorder: &mut GasRecorder) -> (ExecutionResult, U256) {
         // TODO add memory expansion cost?
         if address > {if self.max_index > 32 {self.max_index - 32} else {self.max_index}} {
-            self.expand(address,gas_recorder);
+            return_tuple_if_error!(self.expand(address,Some(gas_recorder)), ZERO);
         }
         let bytes_to_copy = &self.bytes[address..address + 32];
         let mut bytes = [0; 32];
         bytes.copy_from_slice(bytes_to_copy);
-        U256::from(bytes)
+        (ExecutionResult::Success, U256::from(bytes))
     }
 
     #[inline]
-    pub fn write(&mut self, address: usize, value: U256, gas_recorder: &mut GasRecorder) {
+    pub fn write(&mut self, address: usize, value: U256, gas_recorder: &mut GasRecorder) -> ExecutionResult {
         if address > {if self.max_index > 32 {self.max_index - 32} else {self.max_index}} {
-            self.expand(address + 32,gas_recorder);
+            return_if_error!(self.expand(address + 32,Some(gas_recorder)));
         }
         let index = address;
         let end_index = index + 32;
         self.bytes[index..end_index].copy_from_slice(&u256_to_array(value).to_vec());
+        ExecutionResult::Success
     }
 
     #[inline]
-    pub fn write_u8(&mut self, address: usize, value: u8, gas_recorder: &mut GasRecorder) {
+    pub fn write_u8(&mut self, address: usize, value: u8, gas_recorder: &mut GasRecorder) -> ExecutionResult {
         if address > {if self.max_index > 1 {self.max_index - 1} else {self.max_index}} {
-            self.expand(address, gas_recorder);
+            return_if_error!(self.expand(address, Some(gas_recorder)));
         }
         self.bytes[address] = value;
+        ExecutionResult::Success
     }
 
     #[inline]
-    pub fn read_bytes(&mut self, address: usize, length: usize, gas_recorder: &mut GasRecorder) -> Vec<u8> {
+    pub fn read_bytes(&mut self, address: usize, length: usize, gas_recorder: &mut GasRecorder) -> (ExecutionResult, Vec<u8>) {
         if address > {if self.max_index > length {self.max_index - length} else {self.max_index}} {
-            self.expand(address,gas_recorder);
+            return_tuple_if_error!(self.expand(address,Some(gas_recorder)), vec![]);
         }
-        self.bytes[address..(address + length)].to_vec()
+        (ExecutionResult::Success, self.bytes[address..(address + length)].to_vec())
     }
 
     #[inline]
-    fn expand(&mut self, new_max_address: usize, gas_recorder: &mut GasRecorder) {
-        if new_max_address > 10000000 {
-            panic!("Memory expansion error");
-        }
+    fn expand(&mut self, new_max_address: usize, gas_recorder: Option<&mut GasRecorder>) -> ExecutionResult {
+        // if new_max_address > 10000000 {
+        //     return ExecutionResult::Err(Error::InvalidMemSize);
+        // }
         if new_max_address == 0 {
             println!("New max address is 0");
-            return;
+            return ExecutionResult::Success;
         }
         println!("Self.butes.len() : {}", self.bytes.len());
         let mut new_max_address = new_max_address;
@@ -168,9 +173,17 @@ impl Memory {
         // }
         // println!("New max address : {}", new_max_address);
         self.max_index = new_max_address;
-        gas_recorder.record_memory_usage(self.bytes.len(), new_max_address);
+        match gas_recorder {
+            Some(gas_recorder) => {
+                gas_recorder.record_memory_usage(self.bytes.len(), new_max_address);
+                return_if_gas_too_high!(gas_recorder);
+            },
+            _ => {}
+        }
+
         // println!("Max Address : {}", new_max_address);
         self.bytes.resize(new_max_address, 0);
+        ExecutionResult::Success
     }
 }
 
