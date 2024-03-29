@@ -1,25 +1,26 @@
 
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub enum Error {
     InsufficientValuesOnStack,
+    StackOverflow,
     InsufficientGas,
     ModifyStaticState,
     InvalidMemSize,
     InvalidMemoryAccess,
     Halted,
-    Revert,
+    Revert(Vec<u8>),
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub enum ExecutionSuccess {
     Unknown,
     RevertedTransaction,
     Stop,
-    Return,
+    Return(Vec<u8>),
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub enum ExecutionResult {
     Success(ExecutionSuccess),
     Err(Error)
@@ -27,15 +28,28 @@ pub enum ExecutionResult {
 }
 
 impl  ExecutionResult {
-    pub fn is_result_with_return(&self) -> bool {
+    pub fn has_return_result(&self) -> bool {
         match self {
             ExecutionResult::Err(error) => match error {
-                Error::Revert => true,
+                Error::Revert(_) => true,
                 _ => false
             },
             ExecutionResult::Success(success) => match success {
-                ExecutionSuccess::Return => true,
+                ExecutionSuccess::Return(_) => true,
                 _ => false
+            }
+        }
+    }
+
+    pub fn return_result(self) -> Option<Vec<u8>> {
+        match self {
+            ExecutionResult::Err(error) => match error {
+                Error::Revert(result) => Some(result),
+                _ => None
+            },
+            ExecutionResult::Success(success) => match success {
+                ExecutionSuccess::Return(result) => Some(result),
+                _ => None
             }
         }
     }

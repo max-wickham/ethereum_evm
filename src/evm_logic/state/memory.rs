@@ -2,7 +2,7 @@ use std::ops::Index;
 
 use primitive_types::U256;
 
-use crate::evm_logic::evm::macros::{break_if_error, return_if_error};
+use crate::evm_logic::evm::macros::return_if_error;
 use crate::result::ExecutionSuccess;
 use crate::{
     evm_logic::{
@@ -27,14 +27,34 @@ impl Memory {
     }
 
     #[inline]
-    pub fn from(bytes: Vec<u8>, gas_recorder: &mut GasRecorder) -> Memory {
+    pub fn from(bytes: Vec<u8>, gas_recorder: Option<&mut GasRecorder>) -> Memory {
         let len = bytes.len();
         let mut memory = Memory {
             bytes: bytes,
             max_index: 0,
         };
-        memory.expand(len, Some(gas_recorder));
+        memory.expand(len, gas_recorder);
         memory
+    }
+
+    pub fn to_sub_vec(&self, start: usize, end: usize) -> Vec<u8> {
+        /*
+        Extract a sub vector, padded with 0s if the range is not contained within the memory length
+        */
+        if self.len() == 0 {
+            return vec![0; end.max(start) - start];
+        }
+        let len = self.bytes.len();
+        let sub_len = end.max(start) - start;
+        let overlap_len = if start >= len {
+            0
+        } else {
+            0.max((len - 1) as i64 - start as i64) as usize
+        };
+        let mut result = self.bytes[start.min(len - 1)..end.min(len)].to_vec();
+        let mut padding_bytes: Vec<u8> = vec![0; sub_len - overlap_len];
+        result.append(&mut padding_bytes);
+        result
     }
 
     #[inline]
@@ -54,7 +74,7 @@ impl Memory {
         println!("Write addresses: {}", write_address);
         if write_address.checked_add(length).is_none() || read_address.checked_add(length).is_none()
         {
-            gas_recorder.record_gas(gas_recorder.gas_input as u64);
+            gas_recorder.record_gas_usage(gas_recorder.gas_input as u64);
             return_if_gas_too_high!(gas_recorder);
         }
         if write_address + length > self.max_index {
@@ -74,6 +94,7 @@ impl Memory {
         ExecutionResult::Success(ExecutionSuccess::Unknown)
     }
 
+    // TODO refactor this to be cleaner
     #[inline]
     pub fn copy_from_without_cost(
         &mut self,
@@ -104,12 +125,12 @@ impl Memory {
     ) -> ExecutionResult {
         if write_address.checked_add(length).is_none() || read_address.checked_add(length).is_none()
         {
-            gas_recorder.record_gas(gas_recorder.gas_input as u64);
+            gas_recorder.record_gas_usage(gas_recorder.gas_input as u64);
             return_if_gas_too_high!(gas_recorder);
         }
         if write_address.checked_add(length).is_none() || read_address.checked_add(length).is_none()
         {
-            gas_recorder.record_gas(gas_recorder.gas_input as u64);
+            gas_recorder.record_gas_usage(gas_recorder.gas_input as u64);
             return_if_gas_too_high!(gas_recorder);
         }
         if write_address + length > self.max_index {
@@ -135,13 +156,13 @@ impl Memory {
         // TODO should be kept as U256 as maybe the gas input is high enough for this?
         if write_address.checked_add(length).is_none() || read_address.checked_add(length).is_none()
         {
-            gas_recorder.record_gas(gas_recorder.gas_input as u64);
+            gas_recorder.record_gas_usage(gas_recorder.gas_input as u64);
             println!("Bad len1");
             return_if_gas_too_high!(gas_recorder);
         }
         if write_address.checked_add(length).is_none() || read_address.checked_add(length).is_none()
         {
-            gas_recorder.record_gas(gas_recorder.gas_input as u64);
+            gas_recorder.record_gas_usage(gas_recorder.gas_input as u64);
             println!("Bad len2");
             return_if_gas_too_high!(gas_recorder);
         }
@@ -186,7 +207,10 @@ impl Memory {
         let bytes_to_copy = &self.bytes[address..address + 32];
         let mut bytes = [0; 32];
         bytes.copy_from_slice(bytes_to_copy);
-        (ExecutionResult::Success(ExecutionSuccess::Unknown), U256::from(bytes))
+        (
+            ExecutionResult::Success(ExecutionSuccess::Unknown),
+            U256::from(bytes),
+        )
     }
 
     #[inline]
@@ -276,7 +300,7 @@ impl Memory {
         self.max_index = new_max_address;
         match gas_recorder {
             Some(gas_recorder) => {
-                gas_recorder.record_memory_usage(self.bytes.len(), new_max_address);
+                gas_recorder.record_memory_gas_usage(self.bytes.len(), new_max_address);
                 return_if_gas_too_high!(gas_recorder);
             }
             _ => {}

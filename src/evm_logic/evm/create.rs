@@ -53,7 +53,7 @@ pub fn create(
     // evm.gas_recorder.gas_usage -= 100;
     runtime.increase_nonce(evm.message.caller);
     runtime.increase_nonce(address);
-    if result.is_result_with_return() {
+    if result.has_return_result() {
         runtime.set_contract_code(address, evm.last_return_data.bytes.clone());
     }
     println!("Created: {:?}", address);
@@ -66,7 +66,7 @@ pub fn create(
         }
         .cost()
     );
-    evm.gas_recorder.record_gas(
+    evm.gas_recorder.record_gas_usage(
         DynamicCosts::Create {
             deployed_code_size: deployed_code_size,
         }

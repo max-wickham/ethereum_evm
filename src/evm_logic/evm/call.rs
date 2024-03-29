@@ -42,7 +42,7 @@ pub fn call(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool) -> Ex
         ret_offset: ret_offset,
         ret_size: ret_size,
     };
-    evm.gas_recorder.record_gas(
+    evm.gas_recorder.record_gas_usage(
         DynamicCosts::Call {
             value: value,
             target_is_cold: runtime.is_cold(address),
@@ -99,7 +99,7 @@ pub fn call_code(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool) 
         ret_offset: ret_offset,
         ret_size: ret_size,
     };
-    evm.gas_recorder.record_gas(
+    evm.gas_recorder.record_gas_usage(
         DynamicCosts::Call {
             value: value,
             target_is_cold: runtime.is_cold(address),
@@ -143,7 +143,7 @@ pub fn delegate_call(
         ret_offset: ret_offset,
         ret_size: ret_size,
     };
-    evm.gas_recorder.record_gas(
+    evm.gas_recorder.record_gas_usage(
         DynamicCosts::Call {
             value: evm.message.value,
             target_is_cold: runtime.is_cold(address),
@@ -184,7 +184,7 @@ pub fn static_call(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool
         ret_offset: ret_offset,
         ret_size: ret_size,
     };
-    evm.gas_recorder.record_gas(
+    evm.gas_recorder.record_gas_usage(
         DynamicCosts::Call {
             value: ZERO,
             target_is_cold: runtime.is_cold(address),
@@ -227,7 +227,7 @@ pub fn make_call(
         .gas
         .min((evm.gas_input - evm.gas_recorder.gas_usage.clone() as u64) * 63 / 64);
     if args.args_offset.checked_add( args.args_size).is_none() || (args.args_offset + args.args_size > evm.memory.bytes.len()) {
-        evm.gas_recorder.record_gas(evm.gas_recorder.gas_input as u64);
+        evm.gas_recorder.record_gas_usage(evm.gas_recorder.gas_input as u64);
         return ExecutionResult::Err(Error::InvalidMemSize);
     }
     let mut sub_evm = EVMContext::create_sub_context(
@@ -246,26 +246,44 @@ pub fn make_call(
     );
     println!("--------------");
     let execution_result = sub_evm.execute_program(runtime, debug);
-    if match execution_result { ExecutionResult::Err(err) => match err { Error::Revert => {true}, _ => {false}}, _ => {true} } {
-        evm.last_return_data = sub_evm.result;
-        println!("Copy Result");
-    evm.memory.copy_from(
-        &mut evm.last_return_data,
-        0,
-        args.ret_offset,
-        args.ret_size,
-        &mut evm.gas_recorder,
-    );
-    } else {
-        evm.last_return_data = Memory::new();
+    match &execution_result {
+        ExecutionResult::Err(error) => match &error {
+            Error::Revert(result) => {
+                handle_return_data(evm, result, args.ret_offset, args.ret_size);
+            }
+            _ => {
+                evm.last_return_data = Memory::new();
+            }
+        },
+        ExecutionResult::Success(success) => match success {
+            ExecutionSuccess::Return(result) => {
+                handle_return_data(evm, result, args.ret_offset, args.ret_size);
+            }
+            _ => {
+                evm.last_return_data = Memory::new();
+            }
+        }
     }
+    // if match execution_result { ExecutionResult::Err(err) => match err { Error::Revert => {true}, _ => {false}}, _ => {true} } {
+    //     evm.last_return_data = sub_evm.result;
+    //     println!("Copy Result");
+    // evm.memory.copy_from(
+    //     &mut evm.last_return_data,
+    //     0,
+    //     args.ret_offset,
+    //     args.ret_size,
+    //     &mut evm.gas_recorder,
+    // );
+    // } else {
+    //     evm.last_return_data = Memory::new();
+    // }
     // println!("Gas usage {:x}", evm.gas_recorder.gas_input - evm.gas_recorder.gas_usage + evm.gas_recorder.gas_refunds);
     println!("Execution Result {:?}", execution_result);
     if let ExecutionResult::Success(_) = execution_result {
         println!("Merging");
         evm.gas_recorder.merge(&sub_evm.gas_recorder);
     } else {
-        evm.gas_recorder.record_gas(sub_evm.gas_recorder.gas_usage as u64);
+        evm.gas_recorder.record_gas_usage(sub_evm.gas_recorder.gas_usage as u64);
     }
     // evm.gas_recorder
     //     .record_gas((sub_evm.gas_recorder.gas_usage - sub_evm.gas_recorder.gas_refunds.min(sub_evm.gas_recorder.gas_usage)) as u64);
@@ -277,6 +295,17 @@ pub fn make_call(
         println!("Gas usage 1 {:x}", evm.gas_recorder.gas_input - evm.gas_recorder.gas_usage);
     }
     execution_result
+}
+
+fn handle_return_data(evm: &mut EVMContext, return_data: &Vec<u8>, ret_offset: usize, ret_size: usize) {
+    evm.last_return_data = Memory::from(return_data.clone(), None);
+    evm.memory.copy_from_bytes(
+        &return_data,
+        0,
+        ret_offset,
+        ret_size,
+        &mut evm.gas_recorder,
+    );
 }
 
 // #[inline]

@@ -2,7 +2,7 @@
 
 use primitive_types::U256;
 
-use crate::evm_logic::util::u256_to_array;
+use crate::{evm_logic::util::u256_to_array, result::{Error, ExecutionResult, ExecutionSuccess}};
 
 const STACK_SIZE: usize = 1024* 32;
 
@@ -21,8 +21,12 @@ impl Stack {
     }
 
     #[inline]
-    pub fn push(&mut self, value: U256) {
+    pub fn push(&mut self, value: U256) -> ExecutionResult {
+        if self.stack_pointer + 32 > STACK_SIZE {
+            return ExecutionResult::Err(Error::InsufficientGas);
+        }
         self.push_bytes(&u256_to_array(value).to_vec());
+        ExecutionResult::Success(ExecutionSuccess::Unknown)
     }
 
     #[inline]

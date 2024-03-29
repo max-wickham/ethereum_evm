@@ -30,7 +30,6 @@ macro_rules! return_if_error {
     ($evm_val:expr) => {
         match $evm_val {
             ExecutionResult::Err(err) => {
-                println!("Error: {:?}", err);
                 return ExecutionResult::Err(err)},
             _ => {}
         }
@@ -61,17 +60,6 @@ macro_rules! return_if_error_in_tuple {
 }
 pub(crate) use return_if_error_in_tuple;
 
-macro_rules! break_if_error {
-    ($evm_val:expr) => {
-        #[allow(dead_code)]
-        match $evm_val {
-            ExecutionResult::Err(_) => {break;},
-            _ => {}
-        }
-    };
-}
-pub(crate) use break_if_error;
-
 macro_rules! return_error_if_static {
     ($evm_val:expr) => {
         if $evm_val.is_static {
@@ -81,7 +69,6 @@ macro_rules! return_error_if_static {
     };
 }
 pub(crate) use return_error_if_static;
-
 
 
 macro_rules! pop {
@@ -99,6 +86,13 @@ macro_rules! pop {
     }};
 }
 pub(crate) use pop;
+
+macro_rules! push {
+    ($evm:expr, $value:expr) => {{
+        return_if_error!($evm.stack.push($value));
+    }};
+}
+pub(crate) use push;
 
 macro_rules! pop_u64 {
     ($evm_val:tt) => {{
@@ -133,7 +127,7 @@ pub(crate) use pop_usize;
 
 macro_rules! return_if_gas_too_high {
     ($gas_recorder:expr) => {
-        if !$gas_recorder.validate_gas() {
+        if !$gas_recorder.validate_gas_usage() {
             println!("Error gas: {:?}", Error::InsufficientGas);
             $gas_recorder.gas_usage = $gas_recorder.gas_input;
             return ExecutionResult::Err(Error::InsufficientGas);

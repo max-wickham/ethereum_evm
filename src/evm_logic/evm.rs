@@ -3,14 +3,15 @@ mod create;
 mod decoder;
 pub mod macros;
 
-use crate::evm_logic::evm::macros::{break_if_error, return_if_error};
-use crate::evm_logic::gas_calculator::{call_data_gas_cost, GasRecorder};
+use crate::configs::gas_costs::static_costs;
+use crate::evm_logic::gas_calculator::GasRecorder;
 use crate::result::{Error, ExecutionResult, ExecutionSuccess};
 use crate::runtime::Runtime;
-use primitive_types::U256;
 
 use super::state::memory::Memory;
 use super::state::stack::Stack;
+
+use primitive_types::U256;
 
 #[derive(Clone)]
 struct Transaction {
@@ -33,8 +34,6 @@ pub struct EVMContext {
     transaction: Transaction,
     message: Message,
     last_return_data: Memory,
-    // TODO refactor this away into the result
-    result: Memory,
     gas_input: u64,
     gas_price: U256,
     nested_index: usize,
@@ -73,11 +72,8 @@ impl EVMContext {
             0,
             false,
         );
-        evm.gas_recorder.record_gas(21000);
-        if evm.message.data.len() != 0 {
-            evm.gas_recorder
-                .record_gas(call_data_gas_cost(&evm.message.data));
-        }
+        evm.gas_recorder.record_gas_usage(static_costs::G_TRANSACTION);
+        evm.gas_recorder.record_call_data_gas_usage(&evm.message.data);
         if debug {
             println!("Call Data Gas Cost: {:x}", evm.gas_recorder.gas_usage);
         }
@@ -104,11 +100,11 @@ impl EVMContext {
             memory: Memory::new(),
             program: Memory::from(
                 code,
-                &mut GasRecorder {
+                Some(&mut GasRecorder {
                     gas_input: gas as usize,
                     gas_usage: 0,
                     gas_refunds: 0,
-                },
+                }),
             ),
             program_counter: 0,
             contract_address: address,
@@ -116,7 +112,6 @@ impl EVMContext {
             transaction: transaction,
             message: message,
             last_return_data: Memory::new(),
-            result: Memory::new(),
             gas_input: gas,
             gas_price: gas_price,
             nested_index: nested_index,
@@ -134,22 +129,21 @@ impl EVMContext {
         runtime.add_context();
 
         let result = {
-            let mut result = ExecutionResult::Success(ExecutionSuccess::Unknown);
+            let mut result;
             if self.program.len() != 0 {
                 loop {
                     result = self.execute_next_instruction(runtime, debug);
-                    match result {
+                    match &result {
                         ExecutionResult::Err(_) => {
                             break;
                         }
                         ExecutionResult::Success(success) => match success {
-                            ExecutionSuccess::Return | ExecutionSuccess::Stop => {
+                            ExecutionSuccess::Return(_) | ExecutionSuccess::Stop => {
                                 break;
                             }
                             _ => {}
                         },
                     }
-                    break_if_error!(result);
                 }
             } else {
                 result = ExecutionResult::Err(Error::InvalidMemSize);
