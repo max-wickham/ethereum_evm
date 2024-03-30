@@ -248,6 +248,7 @@ pub fn make_call(
             }
         }},
         ExecutionResult::Success(success) => {
+            println!("Merging context");
             runtime.merge_context();
             match success {
             ExecutionSuccess::Return(result) => {

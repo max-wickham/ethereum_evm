@@ -33,7 +33,7 @@ pub fn decode_instruction(
 
     // Provides debug data around each branches block
     if evm.program_counter > evm.program.len() - 1 {
-        return ExecutionResult::Error(ExecutionError::Halted);
+        return ExecutionResult::Success(ExecutionSuccess::Stop);
     }
 
     let opcode: u8 = evm.program[evm.program_counter];

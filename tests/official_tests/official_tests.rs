@@ -158,3 +158,6 @@ generate_official_tests_from_folder!(
 generate_official_tests_from_file!(
     "./tests/official_tests/tests/GeneralStateTests/stMemoryTest/buffer.json"
 );
+generate_official_tests_from_folder!(
+    "./tests/official_tests/tests/GeneralStateTests/VMTests/vmBitwiseLogicOperation"
+);
