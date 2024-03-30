@@ -1,5 +1,6 @@
 # TODO
 
+- [_] Refactor errors to not use execution results for success
 - [x] Fix memory problems on the return (when size is 0)
 - [x] Refactor create and create 2, also get create to work
 - [x] Fix calling costs and split up function
@@ -9,12 +10,12 @@
     - [x] Refactor where macros and functions are
     - [x] Remove lambdas
     - [x] Move costs into a config
-    - [_] Separate gas cost logic from main logic
+    - [x] Separate gas cost logic from main logic
 - [x] Get Memory Buffer tests to work
     - Check CODECOPY
     - Check CALLDATACOPY
     - Check initial costs
-- [_] Make gas refunds handle reverts
+- [x] Make gas refunds handle reverts
 - [_] Change to H256 instead of U256 where needed (and H160)
 - [_] Only pass JSON once in tests, (maybe pass in the proc macro and then directly insert in the code)
 - [x] Replace macro with method in decoder?
@@ -22,7 +23,18 @@
 - [x] Move entire decode step into inline function
 - [?] Restructure code into a folder system
 - [x] More specific error handling
-- [x] Create better gas tracking, (especially for memory)
+- [x] Create better gas tracking, (esplet success = 's: {
+        // Try to send value two times.
+        for _ in 0..2 {
+            value = match send(value) {
+                Ok(()) => break 's true,
+                Err(SendError(value)) => value,
+            }
+        }
+        false
+    };
+
+ecially for memory)
     - [x] Created gas tracker
     - [x] Apply gas tracker to memory operations
     - [x] Apply gas tracker to all other operations

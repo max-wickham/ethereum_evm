@@ -3,9 +3,11 @@ mod create;
 mod decoder;
 pub mod macros;
 
+use std::f32::consts::E;
+
 use crate::configs::gas_costs::static_costs;
-use crate::evm_logic::gas_calculator::GasRecorder;
-use crate::result::{Error, ExecutionResult, ExecutionSuccess};
+use crate::evm_logic::gas_recorder::GasRecorder;
+use crate::result::{ExecutionError, ExecutionResult, ExecutionSuccess};
 use crate::runtime::Runtime;
 
 use super::state::memory::Memory;
@@ -42,47 +44,6 @@ pub struct EVMContext {
 }
 
 impl EVMContext {
-    #[inline]
-    pub fn execute_transaction(
-        runtime: &mut impl Runtime,
-        contract: U256,
-        origin: U256,
-        gas: u64,
-        gas_price: U256,
-        value: U256,
-        data: Vec<u8>,
-        debug: bool,
-    ) -> (ExecutionResult, usize) {
-        let message = Message {
-            caller: contract,
-            value: value,
-            data: data,
-        };
-        let transaction = Transaction {
-            origin: origin,
-            gas_price: gas_price,
-        };
-        let mut evm = EVMContext::create_sub_context(
-            contract,
-            message,
-            gas,
-            runtime.code(contract),
-            transaction,
-            gas_price,
-            0,
-            false,
-        );
-        evm.gas_recorder.record_gas_usage(static_costs::G_TRANSACTION);
-        evm.gas_recorder.record_call_data_gas_usage(&evm.message.data);
-        if debug {
-            println!("Call Data Gas Cost: {:x}", evm.gas_recorder.gas_usage);
-        }
-        let result = evm.execute_program(runtime, debug);
-        // TODO move this into gas_recorder
-        let gas_usage = evm.gas_recorder.gas_usage
-            - usize::min(evm.gas_recorder.gas_refunds, evm.gas_recorder.gas_usage / 2);
-        return (result, gas_usage);
-    }
 
     #[inline]
     fn create_sub_context(
@@ -99,7 +60,7 @@ impl EVMContext {
             stack: Stack::new(),
             memory: Memory::new(),
             program: Memory::from(
-                code,
+                &code,
                 Some(&mut GasRecorder {
                     gas_input: gas as usize,
                     gas_usage: 0,
@@ -128,50 +89,36 @@ impl EVMContext {
     fn execute_program(&mut self, runtime: &mut impl Runtime, debug: bool) -> ExecutionResult {
         runtime.add_context();
 
-        let result = {
-            let mut result;
-            if self.program.len() != 0 {
-                loop {
-                    result = self.execute_next_instruction(runtime, debug);
-                    match &result {
-                        ExecutionResult::Err(_) => {
-                            break;
-                        }
-                        ExecutionResult::Success(success) => match success {
-                            ExecutionSuccess::Return(_) | ExecutionSuccess::Stop => {
-                                break;
-                            }
-                            _ => {}
-                        },
-                    }
+        let mut result;
+        if self.program.len() != 0 {
+            loop {
+                result = self.execute_next_instruction(runtime, debug);
+                match &result {
+                    ExecutionResult::InProgress => {},
+                    _ => {break;}
                 }
-            } else {
-                result = ExecutionResult::Err(Error::InvalidMemSize);
             }
-            if debug {
-                println!(
-                    "Program Gas Usage : {:x}",
-                    if self.gas_recorder.gas_usage > self.gas_input as usize {
-                        self.gas_input as u64
-                    } else {
-                        self.gas_input - self.gas_recorder.gas_usage as u64
-                    }
-                );
-            }
-            result
-        };
+        } else {
+            result = ExecutionResult::Error(ExecutionError::InvalidMemSize);
+        }
+        // TODO move this into gas_recorder
         self.gas_recorder.gas_usage = if self.gas_recorder.gas_usage > self.gas_input as usize {
             self.gas_input as u64
         } else {
             self.gas_recorder.gas_usage as u64
         } as usize;
-        println!("Sub Gas Usage {:x}", self.gas_recorder.gas_usage);
+        if debug {
+            println!("Sub Gas Usage {:x}", self.gas_recorder.gas_usage);
+        }
         match result {
             ExecutionResult::Success(_) => {
                 runtime.merge_context();
             }
-            ExecutionResult::Err(_) => {
+            ExecutionResult::Error(_) => {
                 runtime.revert_context();
+            }
+            ExecutionResult::InProgress => {
+                panic!("Program shouldn't have excited in progress");
             }
         }
 
@@ -189,15 +136,10 @@ impl EVMContext {
 
     #[inline]
     fn check_gas_usage(&self) -> ExecutionResult {
-        match (self.gas_recorder.gas_usage
-            - self
-                .gas_recorder
-                .gas_refunds
-                .min(self.gas_recorder.gas_usage))
-            > self.gas_input as usize
+        match !self.gas_recorder.is_valid_with_refunds()
         {
-            true => ExecutionResult::Err(crate::result::Error::InsufficientGas),
-            false => ExecutionResult::Success(ExecutionSuccess::Unknown),
+            true => ExecutionResult::Error(ExecutionError::InsufficientGas),
+            false => ExecutionResult::InProgress,
         }
     }
 }
@@ -206,3 +148,44 @@ impl EVMContext {
 // message data
 // program data
 // mem data
+#[inline]
+pub fn execute_transaction(
+    runtime: &mut impl Runtime,
+    contract_address: U256,
+    origin: U256,
+    gas: u64,
+    gas_price: U256,
+    value: U256,
+    data: &[u8],
+    debug: bool,
+) -> (ExecutionResult, usize) {
+    let message = Message {
+        caller: contract_address,
+        value: value,
+        data: data.to_vec(),
+    };
+    let transaction = Transaction {
+        origin: origin,
+        gas_price: gas_price,
+    };
+    let mut evm = EVMContext::create_sub_context(
+        contract_address,
+        message,
+        gas,
+        runtime.code(contract_address),
+        transaction,
+        gas_price,
+        0,
+        false,
+    );
+    evm.gas_recorder
+        .record_gas_usage(static_costs::G_TRANSACTION);
+    evm.gas_recorder
+        .record_call_data_gas_usage(&evm.message.data);
+    if debug {
+        println!("Call Data Gas Cost: {:x}", evm.gas_recorder.gas_usage);
+    }
+    let result = evm.execute_program(runtime, debug);
+    let gas_usage = evm.gas_recorder.usage_with_refunds();
+    return (result, gas_usage);
+}

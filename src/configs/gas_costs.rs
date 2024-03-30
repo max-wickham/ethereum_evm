@@ -2,7 +2,7 @@ use std::ops::Div;
 
 use primitive_types::{H256, U256};
 
-use crate::evm_logic::util::ZERO;
+use crate::evm_logic::util::{ZERO, ZERO_H256};
 
 pub mod static_costs {
     pub const G_ZERO: u64 = 0;
@@ -19,7 +19,7 @@ pub mod static_costs {
     pub const G_COLDS_LOAD: u64 = 2100;
     pub const G_SSET: u64 = 20000;
     pub const G_SRESET: u64 = 2900;
-    pub const R_SCLEAR: u64 = 4800;
+    pub const R_SCLEAR: u64 = 15000;
     pub const G_SELF_DESTRUCT: u64 = 5000;
     pub const G_CREATE: u64 = 32000;
     pub const G_CODE_DEPOSIT: u64 = 200;
@@ -66,16 +66,6 @@ pub enum DynamicCosts {
         /// Whether the target exists.
         target_exists: bool,
     },
-    SStore {
-        /// Original value.
-        original: H256,
-        /// Current value.
-        current: H256,
-        /// New value.
-        new: H256,
-        /// True if target has not been previously accessed in this transaction
-        target_is_cold: bool,
-    },
     /// Gas cost for `SHA3`.
     Keccak256 {
         /// Length of the data.
@@ -105,6 +95,12 @@ pub enum DynamicCosts {
         /// True if target has not been previously accessed in this transaction
         target_is_cold: bool,
     },
+    SStore {
+        original: H256,
+        current: H256,
+        new: H256,
+        target_is_cold: bool,
+    },
     Copy {
         size_bytes: usize,
     },
@@ -118,14 +114,14 @@ impl DynamicCosts {
     // TODO add error here
     pub fn cost(&self) -> u64 {
         match self {
-            DynamicCosts::ExtCodeSize { target_is_cold } => {
+            DynamicCosts::Balance { target_is_cold } => {
                 if *target_is_cold {
                     static_costs::G_COLDS_LOAD
                 } else {
                     static_costs::G_WARM_ACCESS
                 }
             }
-            DynamicCosts::Balance { target_is_cold } => {
+            DynamicCosts::ExtCodeSize { target_is_cold } => {
                 if *target_is_cold {
                     static_costs::G_COLDS_LOAD
                 } else {
@@ -157,18 +153,6 @@ impl DynamicCosts {
                 if *empty_account {
                     static_costs::G_NEW_ACCOUNT
                 } else {0}
-            }
-            DynamicCosts::SStore {
-                original,
-                current,
-                new,
-                target_is_cold,
-            } => {
-                if *original == *current && *current != *new {
-                    static_costs::G_SSET
-                } else {
-                    static_costs::G_SRESET
-                }
             }
             DynamicCosts::Keccak256 { len } => {
                 println!("Len in Keccak256: {}", len);
@@ -204,6 +188,39 @@ impl DynamicCosts {
 
                 println!("Code Size {}",deployed_code_size);
                 static_costs::G_CREATE + static_costs::G_KECCAK256_WORD * (*deployed_code_size as u64).div_ceil(32)
+            }
+            DynamicCosts::SLoad { target_is_cold } => {
+                println!("Is cold: {}", target_is_cold);
+                if *target_is_cold {
+                    static_costs::G_COLDS_LOAD
+                } else {
+                    static_costs::G_WARM_ACCESS
+                }
+            }
+            DynamicCosts::SStore { original, current, new, target_is_cold } => {
+                let mut gas_cost = if *target_is_cold { static_costs::G_COLDS_LOAD } else { 0};
+                gas_cost  += if current.eq(&new) | !original.eq(&current) {
+                    println!("Warm access");
+                    static_costs::G_WARM_ACCESS
+                } else if original.eq(&ZERO_H256) {
+                    static_costs::G_SSET
+                } else {
+                    static_costs::G_SRESET
+                };
+                gas_cost
+
+            }
+            _ => 0,
+        }
+    }
+    pub fn refund(&self) -> u64 {
+        match self {
+            DynamicCosts::SStore { original, current, new, target_is_cold } => {
+                if !original.eq(&ZERO_H256) && new.eq(&ZERO_H256) {
+                    static_costs::R_SCLEAR
+                } else {
+                    0
+                }
             }
             _ => 0,
         }

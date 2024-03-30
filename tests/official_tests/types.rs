@@ -1,4 +1,4 @@
-use ethereum_evm::evm_logic::util::{h256_to_u256, u256_to_h256};
+use ethereum_evm::util::{h256_to_u256, u256_to_h256};
 use hex::FromHex;
 use primitive_types::{H256, U256};
 use serde::{Deserialize, Deserializer};

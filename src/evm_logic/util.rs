@@ -22,28 +22,27 @@ lazy_static! {
     pub static ref ZERO_H256: H256 = u256_to_h256(U256::zero());
 }
 
-pub fn vec_to_fixed_array(bytes: Vec<u8>) -> [u8; 32] {
-    let mut result = [0u8; 32];
-    let len = bytes.len().min(32); // Take minimum to avoid out-of-bounds access
-                                   // Copy bytes into the result array
-    result[..len].copy_from_slice(&bytes[..len]);
-    result
+pub fn var_array_to_fixed_array(bytes: &[u8]) -> [u8; 32] {
+    let result: Result<[u8; 32], _> =  bytes.try_into();
+    match result {
+        Ok(r) => r,
+        Err(_) => {
+            // try to copy as many bytes as possible
+            let mut result = [0u8; 32];
+            let len = bytes.len().min(32); // Take minimum to avoid out-of-bounds access
+            result[..len].copy_from_slice(&bytes[..len]);
+            result
+        }
+    }
 }
 
 pub fn keccak256_u256(addr: U256) -> H256 {
     keccak256(&u256_to_array(addr).to_vec())
 }
 
-pub fn keccak256(bytes: &Vec<u8>) -> H256 {
+pub fn keccak256(bytes: &[u8]) -> H256 {
     let result: Vec<u8> = Keccak256::digest(bytes).to_vec();
-    H256::from_slice(vec_to_fixed_array(result).as_slice())
-}
-
-pub fn bytes_for_u256(num: &U256) -> usize {
-    let num_zeros = num.leading_zeros();
-    let num_bits = 256 - num_zeros;
-    let bytes_needed = (num_bits + 7) / 8; // divide by 8 and round up
-    bytes_needed as usize
+    H256::from_slice(var_array_to_fixed_array(result.as_slice()).as_slice())
 }
 
 pub fn h256_to_u256(v: H256) -> U256 {
@@ -97,18 +96,3 @@ pub fn int256_to_uint256(v: Int256) -> Uint256 {
         v.to_uint256().unwrap()
     }
 }
-
-#[macro_export]
-macro_rules! gas_usage_change {
-    ($($code:tt)*) => {
-        {
-            let current_usage = self.memory.memory_cost;
-            {
-                $($code)*
-            }
-            let new_usage = self.memory.memory_cost;
-            new_usage - current_usage
-        }
-    };
-}
-pub(crate) use gas_usage_change;

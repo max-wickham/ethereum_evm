@@ -1,5 +1,10 @@
+// use ethereum_evm::{
+//     evm_logic::{evm::EVMContext, util::{keccak256, u256_to_h256}}, evm_logic::result::ExecutionResult, runtime::Runtime
+// };
 use ethereum_evm::{
-    evm_logic::{evm::EVMContext, util::{keccak256, u256_to_h256}}, result::ExecutionResult, runtime::Runtime
+    execute_transaction,
+    result::ExecutionResult,
+    runtime::Runtime, util::{keccak256, u256_to_h256},
 };
 use primitive_types::U256;
 use std::{
@@ -9,7 +14,7 @@ use std::{
 };
 use test_gen::{generate_official_tests_from_file, generate_official_tests_from_folder};
 
-use crate::mocks::mock_runtime::{Context, Contract, MockRuntime};
+use crate::mocks::mock_runtime::{Contract, MockRuntime};
 
 use super::types::{TestState, TestStateMulti};
 
@@ -83,14 +88,14 @@ pub fn run_test(test: &TestState, debug: bool) {
     runtime.add_context();
     println!("Message data size : {}", test.transaction.data.len());
     // Execute the transaction
-    let (result, gas_usage) = EVMContext::execute_transaction(
+    let (result, gas_usage) = execute_transaction(
         &mut runtime,
         test.transaction.to,
         test.transaction.sender,
         test.transaction.gas_limit.as_u64(),
         test.transaction.gas_price.unwrap_or_default(),
         test.transaction.value,
-        test.transaction.data,
+        &test.transaction.data,
         debug,
     );
 
@@ -140,16 +145,16 @@ pub fn run_test(test: &TestState, debug: bool) {
 //     "./tests/official_tests/tests/GeneralStateTests/VMTests/vmPerformance"
 // );
 
-generate_official_tests_from_file!(
-    "./tests/official_tests/tests/GeneralStateTests/stMemoryTest/buffer.json"
-);
+
 // generate_official_tests_from_file!(
 //     "./tests/official_tests/tests/GeneralStateTests/stMemoryTest/mem32kb-33.json"
 // );
 // generate_official_tests_from_file!(
-//     "./tests/official_tests/tests/GeneralStateTests/VMTests/vmArithmeticTest/add.json"
+//     "./tests/official_tests/tests/GeneralStateTests/VMTests/vmArithmeticTest/fib.json"
 // );
-// generate_official_tests_froms
-// generate_official_tests_from_folder!(
-//     "./tests/official_tests/tests/GeneralStateTests/VMTests/vmBitwiseLogicOperation"
-// );
+generate_official_tests_from_folder!(
+    "./tests/official_tests/tests/GeneralStateTests/VMTests/vmArithmeticTest"
+);
+generate_official_tests_from_file!(
+    "./tests/official_tests/tests/GeneralStateTests/stMemoryTest/buffer.json"
+);

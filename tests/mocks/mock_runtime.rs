@@ -1,4 +1,4 @@
-use ethereum_evm::evm_logic::util::{h256_to_u256, keccak256, u256_to_h256};
+use ethereum_evm::util::{h256_to_u256, keccak256, u256_to_h256};
 use ethereum_evm::runtime::Runtime;
 use hex::encode;
 use primitive_types::{H160, H256, U256};

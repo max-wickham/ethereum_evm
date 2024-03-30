@@ -1,7 +1,8 @@
 
 
 #[derive(Clone, Debug)]
-pub enum Error {
+pub enum ExecutionError {
+    ExcitedEarly,
     InsufficientValuesOnStack,
     StackOverflow,
     InsufficientGas,
@@ -14,43 +15,38 @@ pub enum Error {
 
 #[derive(Clone, Debug)]
 pub enum ExecutionSuccess {
+    // This should never occur
     Unknown,
+    // Transaction finished on a revert instruction
     RevertedTransaction,
+    // Transaction finished on a stop instruction
     Stop,
+    // Transaction finished on a return instruction, contains the returned vec
     Return(Vec<u8>),
 }
 
+// TODO refactor this to have both final execution result and execution in progress or final enum?
 #[derive(Clone, Debug)]
 pub enum ExecutionResult {
+    InProgress,
     Success(ExecutionSuccess),
-    Err(Error)
+    Error(ExecutionError)
 
 }
 
 impl  ExecutionResult {
-    pub fn has_return_result(&self) -> bool {
-        match self {
-            ExecutionResult::Err(error) => match error {
-                Error::Revert(_) => true,
-                _ => false
-            },
-            ExecutionResult::Success(success) => match success {
-                ExecutionSuccess::Return(_) => true,
-                _ => false
-            }
-        }
-    }
 
     pub fn return_result(self) -> Option<Vec<u8>> {
         match self {
-            ExecutionResult::Err(error) => match error {
-                Error::Revert(result) => Some(result),
+            Self::Error(error) => match error {
+                ExecutionError::Revert(result) => Some(result),
                 _ => None
             },
-            ExecutionResult::Success(success) => match success {
+            Self::Success(success) => match success {
                 ExecutionSuccess::Return(result) => Some(result),
                 _ => None
-            }
+            },
+            Self::InProgress => None
         }
     }
 }

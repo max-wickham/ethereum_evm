@@ -1,3 +1,8 @@
+use core::panic;
+
+use crate::result::ExecutionResult;
+
+
 #[derive(Copy,Clone)]
 pub struct GasRecorder {
     pub gas_input: usize,
@@ -7,8 +12,20 @@ pub struct GasRecorder {
 
 impl GasRecorder {
 
-    pub fn validate_gas_usage(&self) -> bool {
+    pub fn usage_with_refunds(&self) -> usize {
+        self.gas_usage - self.gas_refunds.min(self.gas_usage / 2)
+    }
+
+    pub fn is_valid(&self) -> bool {
         self.gas_usage <= self.gas_input
+    }
+
+    pub fn set_gas_usage_to_max(&mut self) {
+        self.gas_usage = self.gas_input;
+    }
+    // TODO unit test
+    pub fn is_valid_with_refunds(&self) -> bool {
+        (self.gas_usage - self.gas_refunds.min(self.gas_usage / 5)) <= self.gas_input
     }
 
     pub fn record_gas_usage(&mut self, gas: u64) {
@@ -19,15 +36,13 @@ impl GasRecorder {
         self.gas_refunds += gas as usize;
     }
 
+    // TODO unit test
     pub fn record_memory_gas_usage(&mut self, current_memory_size: usize, new_memory_size: usize) {
         if new_memory_size == 0 || current_memory_size >= new_memory_size {
             return;
         }
         let old_cost = memory_cost(current_memory_size);
         let new_cost = memory_cost(new_memory_size);
-        // println!("Old cost: {}, New cost: {}", old_cost, new_cost);
-        let len = new_memory_size - current_memory_size;
-        // let memory_expansion_cost = 3 + 3 * (len as u64 + 31 / 32) as usize + (new_cost - old_cost);
         let memory_expansion_cost = new_cost - old_cost;
         if self.gas_usage.checked_add(memory_expansion_cost).is_none() {
             self.gas_usage = u64::MAX as usize;
@@ -37,19 +52,29 @@ impl GasRecorder {
     }
 
 
-    pub fn record_call_data_gas_usage(&mut self, data: &Vec<u8>) {
+    pub fn record_call_data_gas_usage(&mut self, data: &[u8]) {
         let cost = call_data_gas_cost(data);
         self.record_gas_usage(cost);
     }
 
-    pub fn merge(&mut self, other: &GasRecorder) {
-        self.gas_usage += other.gas_usage;
-        self.gas_refunds += other.gas_refunds;
+    pub fn merge(&mut self, other: &GasRecorder, execution_result: &ExecutionResult) {
+        match execution_result {
+            ExecutionResult::Error(_) => {
+                self.gas_usage += other.gas_usage;
+            }
+            ExecutionResult::Success(_) => {
+                self.gas_usage += other.gas_usage;
+                self.gas_refunds += other.gas_refunds;
+            }
+            ExecutionResult::InProgress => {
+                panic!("Cannot merge in progress execution results");
+            }
+        }
     }
 }
 
 #[inline]
-fn call_data_gas_cost(data: &Vec<u8>) -> u64 {
+fn call_data_gas_cost(data: &[u8]) -> u64 {
     let mut cost = 0;
     for byte in data {
         if *byte == 0 {
@@ -75,6 +100,5 @@ fn memory_cost(current_memory_size_bytes: usize) -> usize {
         return u64::MAX as usize;
     }
     let memory_cost = (memory_size_word.pow(2)) / 512 + (3 * memory_size_word);
-    println!("Memory cost {:x}", memory_cost);
     memory_cost
 }
