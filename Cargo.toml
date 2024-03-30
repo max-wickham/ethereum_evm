@@ -1,4 +1,4 @@
-workspace = { members = ["util"] }
+workspace = { members = [ "official_test_types","util"] }
 [package]
 name = "ethereum_evm"
 version = "0.1.0"
@@ -8,6 +8,7 @@ edition = "2021"
 
 [dependencies]
 test_gen = { path = "./test_gen" }
+official_test_types = { path = "./official_test_types" }
 util = { path = "./util" }
 array-init = "2.1.0"
 ethereum = "0.15.0"

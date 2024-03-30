@@ -1,0 +1,10 @@
+[package]
+name = "official_test_types"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+hex = "0.4.3"
+primitive-types = { version = "0.12", features = ["rlp", "serde"] }
+serde = { version = "1", features = ["derive"] }
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

@@ -4,19 +4,27 @@
 use ethereum_evm::{
     execute_transaction,
     result::ExecutionResult,
-    runtime::Runtime, util::{keccak256, u256_to_h256},
+    runtime::Runtime,
+    util::{keccak256, u256_to_h256},
 };
 use primitive_types::U256;
+use serde_json::json;
+use serde_json::value::Value;
 use std::{
     collections::{BTreeMap, HashSet},
     fs::File,
     io::BufReader,
 };
-use test_gen::{generate_official_tests_from_file, generate_official_tests_from_folder};
+use test_gen::generate_official_tests;
 
 use crate::mocks::mock_runtime::{Contract, MockRuntime};
 
-use super::types::{TestState, TestStateMulti};
+use official_test_types::types::{TestState, TestStateMulti};
+
+generate_official_tests!(
+    "./tests/official_tests/tests/GeneralStateTests/VMTests"
+);
+generate_official_tests!("./tests/official_tests/tests/GeneralStateTests/stMemoryTest");
 
 pub fn run_test_file(filename: String, debug: bool, index: usize) {
     let tests: BTreeMap<String, TestStateMulti> =
@@ -65,7 +73,7 @@ pub fn run_test(test: &TestState, debug: bool) {
                         hot_keys: HashSet::new(),
                     },
                 );
-                println!("Storage: {:?}",contract.storage().clone());
+                println!("Storage: {:?}", contract.storage().clone());
             }
             contracts.insert(
                 test.env.current_coinbase,
@@ -114,17 +122,20 @@ pub fn run_test(test: &TestState, debug: bool) {
             runtime.deposit(test.transaction.to, test.transaction.value);
             // withdraw the value from the sender
             runtime.withdrawal(test.transaction.sender, test.transaction.value);
-        },
+        }
         _ => {}
     }
     // withdraw the gas usage from the sender
     runtime.withdrawal(test.transaction.sender, U256::from(eth_usage as u64));
     runtime.deposit(test.env.current_coinbase, U256::from(eth_usage as u64));
     runtime.merge_context();
-    println!("Context {:?}", match runtime.current_context {
-        Some(_) => "Exists",
-        _ => "Doesn't Exist",
-    });
+    println!(
+        "Context {:?}",
+        match runtime.current_context {
+            Some(_) => "Exists",
+            _ => "Doesn't Exist",
+        }
+    );
     for (address, contract) in &runtime.contracts {
         println!("Address: {:x}", address);
         println!("Storage: {:?}", contract.storage);
@@ -145,19 +156,18 @@ pub fn run_test(test: &TestState, debug: bool) {
 //     "./tests/official_tests/tests/GeneralStateTests/VMTests/vmPerformance"
 // );
 
-
 // generate_official_tests_from_file!(
 //     "./tests/official_tests/tests/GeneralStateTests/stMemoryTest/mem32kb-33.json"
 // );
 // generate_official_tests_from_file!(
 //     "./tests/official_tests/tests/GeneralStateTests/VMTests/vmArithmeticTest/fib.json"
 // );
-generate_official_tests_from_folder!(
-    "./tests/official_tests/tests/GeneralStateTests/VMTests/vmArithmeticTest"
-);
-generate_official_tests_from_file!(
-    "./tests/official_tests/tests/GeneralStateTests/stMemoryTest/buffer.json"
-);
-generate_official_tests_from_folder!(
-    "./tests/official_tests/tests/GeneralStateTests/VMTests/vmBitwiseLogicOperation"
-);
+// generate_official_tests_from_folder!(
+//     "./tests/official_tests/tests/GeneralStateTests/VMTests/vmArithmeticTest"
+// );
+// generate_official_tests_from_file!(
+//     "./tests/official_tests/tests/GeneralStateTests/stMemoryTest/buffer.json"
+// );
+// generate_official_tests_from_folder!(
+//     "./tests/official_tests/tests/GeneralStateTests/VMTests/vmBitwiseLogicOperation"
+// );

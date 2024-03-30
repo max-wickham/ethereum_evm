@@ -44,7 +44,6 @@ pub struct EVMContext {
 }
 
 impl EVMContext {
-
     #[inline]
     fn create_sub_context(
         address: U256,
@@ -88,14 +87,15 @@ impl EVMContext {
     #[inline]
     fn execute_program(&mut self, runtime: &mut impl Runtime, debug: bool) -> ExecutionResult {
         runtime.add_context();
-
         let mut result;
         if self.program.len() != 0 {
             loop {
                 result = self.execute_next_instruction(runtime, debug);
                 match &result {
-                    ExecutionResult::InProgress => {},
-                    _ => {break;}
+                    ExecutionResult::InProgress => {}
+                    _ => {
+                        break;
+                    }
                 }
             }
         } else {
@@ -136,8 +136,7 @@ impl EVMContext {
 
     #[inline]
     fn check_gas_usage(&self) -> ExecutionResult {
-        match !self.gas_recorder.is_valid_with_refunds()
-        {
+        match !self.gas_recorder.is_valid_with_refunds() {
             true => ExecutionResult::Error(ExecutionError::InsufficientGas),
             false => ExecutionResult::InProgress,
         }
@@ -164,6 +163,7 @@ pub fn execute_transaction(
         value: value,
         data: data.to_vec(),
     };
+
     let transaction = Transaction {
         origin: origin,
         gas_price: gas_price,

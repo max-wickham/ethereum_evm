@@ -182,6 +182,7 @@ dependencies = [
  "hex",
  "lazy_static",
  "num256",
+ "official_test_types",
  "paste",
  "phf",
  "primitive-types",
@@ -359,6 +360,15 @@ checksum = "27dd9df2c73f8724f4f6930882c127f042656bc84e6000fe9f6026bb43fe1a57"
 dependencies = [
  "bnum",
  "num-traits",
+ "serde",
+]
+
+[[package]]
+name = "official_test_types"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "primitive-types",
  "serde",
 ]
 
@@ -680,6 +690,9 @@ checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 name = "test_gen"
 version = "0.1.0"
 dependencies = [
+ "hex",
+ "official_test_types",
+ "primitive-types",
  "proc-macro2",
  "quote",
  "serde",
