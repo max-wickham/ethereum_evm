@@ -62,7 +62,7 @@ fn generate_tests_from_file(file_path: &str) -> Vec<proc_macro2::TokenStream> {
                 let test_string = #test_str;
                 // let test_string: str = #test_str;
                 let test: TestState = serde_json::from_str(test_string).unwrap();
-                // run_test(test, true);
+                run_test(&test, true);
             }
         });
     }

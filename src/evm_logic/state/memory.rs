@@ -41,19 +41,13 @@ impl Memory {
         /*
         Extract a sub vector, padded with 0s if the range is not contained within the memory length
         */
-        // assert!(end >= start); TODO handle this error case
         if self.len() == 0 {
             return vec![0; end.max(start) - start];
         }
-        let len = self.bytes.len();
+        let len: usize = self.bytes.len();
         let sub_len = end.max(start) - start;
-        let overlap_len = if start >= len {
-            0
-        } else {
-            0.max((len - 1) as i64 - start as i64) as usize
-        };
         let mut result = self.bytes[start.min(len - 1)..end.min(len)].to_vec();
-        let mut padding_bytes: Vec<u8> = vec![0; sub_len - overlap_len];
+        let mut padding_bytes: Vec<u8> = vec![0; sub_len - result.len()];
         result.append(&mut padding_bytes);
         assert!(result.len() == end - start);
         result
@@ -119,31 +113,75 @@ impl Memory {
     pub fn copy_from_bytes(
         &mut self,
         bytes: &[u8],
-        read_address: usize,
+        read_address: U256,
         write_address: usize,
         length: usize,
         gas_recorder: &mut GasRecorder,
     ) -> ExecutionResult {
         // TODO should be kept as U256 as maybe the gas input is high enough for this?
-        if write_address.checked_add(length).is_none() || read_address.checked_add(length).is_none()
+        println!("Read from {:x}", read_address);
+        if write_address.checked_add(length).is_none()
         {
+            println!("Checked add failed");
             gas_recorder.record_gas_usage(gas_recorder.gas_input as u64);
             return ExecutionResult::Error(ExecutionError::InsufficientGas);
         }
-        if write_address + length > self.max_index {
+
+        if write_address + length > self.bytes.len() {
             return_if_error!(self.expand(write_address + length, Some(gas_recorder)));
         }
-        let (mut start_address, mut end_address) = (read_address, read_address + length);
-        if start_address > bytes.len() {
-            start_address = bytes.len();
-        }
-        if end_address > bytes.len() {
-            end_address = bytes.len();
-        }
-        self.bytes[write_address..write_address + (end_address - start_address)]
-            .copy_from_slice(&bytes[start_address..end_address]);
+        // let (mut start_address, mut end_address) = (read_address, read_address + length);
+        // if start_address > bytes.len() {
+        //     start_address = bytes.len();
+        // }
+        // if end_address > bytes.len() {
+        //     end_address = bytes.len();
+        // }
+
+        // self.bytes[write_address..write_address + (end_address - start_address)]
+        //     .copy_from_slice(&bytes[start_address..end_address]);
+        // unsafe  {
+
+            // let destination = bytes.as_ptr() + read_address.as_usize();
+            // copy_bytes_with_padding(self.bytes.as_mut_ptr() + read_address, , length);
+        // }
+        let read_address = if read_address > (std::usize::MAX - length).into() {
+            std::usize::MAX - length
+        } else {
+            read_address.as_usize()
+        };
+        copy_bytes(bytes, read_address, &mut self.bytes, write_address, length);
         ExecutionResult::InProgress
     }
+    // #[inline]
+    // pub fn copy_from_bytes(
+    //     &mut self,
+    //     bytes: &[u8],
+    //     read_address: U256,
+    //     write_address: usize,
+    //     length: usize,
+    //     gas_recorder: &mut GasRecorder,
+    // ) -> ExecutionResult {
+    //     // TODO should be kept as U256 as maybe the gas input is high enough for this?
+    //     if write_address.checked_add(length).is_none() || read_address.checked_add(U256::from(length)).is_none()
+    //     {
+    //         gas_recorder.record_gas_usage(gas_recorder.gas_input as u64);
+    //         return ExecutionResult::Error(ExecutionError::InsufficientGas);
+    //     }
+    //     if write_address + length > self.max_index {
+    //         return_if_error!(self.expand(write_address + length, Some(gas_recorder)));
+    //     }
+    //     let (mut start_address, mut end_address) = (read_address, read_address + length);
+    //     if start_address > bytes.len() {
+    //         start_address = bytes.len();
+    //     }
+    //     if end_address > bytes.len() {
+    //         end_address = bytes.len();
+    //     }
+    //     self.bytes[write_address..write_address + (end_address - start_address)]
+    //         .copy_from_slice(&bytes[start_address..end_address]);
+    //     ExecutionResult::InProgress
+    // }
 
     #[inline]
     pub fn read_u256(
@@ -152,22 +190,14 @@ impl Memory {
         gas_recorder: &mut GasRecorder,
     ) -> (ExecutionResult, U256) {
         // TODO add memory expansion cost?
-        if address > {
-            if self.max_index > 32 {
-                self.max_index - 32
-            } else {
-                self.max_index
-            }
-        } {
-            return_tuple_if_error!(self.expand(address, Some(gas_recorder)), ZERO);
+        if self.bytes.len() < 32 || address > self.bytes.len() - 32 {
+            println!("Memory read out of bounds: {:?}", address);
+            return_tuple_if_error!(self.expand(address + 32, Some(gas_recorder)), ZERO);
         }
         let bytes_to_copy = &self.bytes[address..address + 32];
         let mut bytes = [0; 32];
         bytes.copy_from_slice(bytes_to_copy);
-        (
-            ExecutionResult::InProgress,
-            U256::from(bytes),
-        )
+        (ExecutionResult::InProgress, U256::from(bytes))
     }
 
     #[inline]
@@ -177,13 +207,7 @@ impl Memory {
         value: U256,
         gas_recorder: &mut GasRecorder,
     ) -> ExecutionResult {
-        if address > {
-            if self.max_index > 32 {
-                self.max_index - 32
-            } else {
-                self.max_index
-            }
-        } {
+        if address >= self.bytes.len().max(32) - 32 {
             return_if_error!(self.expand(address + 32, Some(gas_recorder)));
         }
         let index = address;
@@ -199,14 +223,8 @@ impl Memory {
         value: u8,
         gas_recorder: &mut GasRecorder,
     ) -> ExecutionResult {
-        if address > {
-            if self.max_index > 1 {
-                self.max_index - 1
-            } else {
-                self.max_index
-            }
-        } {
-            return_if_error!(self.expand(address, Some(gas_recorder)));
+        if address >= self.bytes.len().max(1) - 1{
+            return_if_error!(self.expand(address + 1, Some(gas_recorder)));
         }
         self.bytes[address] = value;
         ExecutionResult::InProgress
@@ -219,14 +237,8 @@ impl Memory {
         length: usize,
         gas_recorder: &mut GasRecorder,
     ) -> (ExecutionResult, Vec<u8>) {
-        if address > {
-            if self.max_index > length {
-                self.max_index - length
-            } else {
-                self.max_index
-            }
-        } {
-            return_tuple_if_error!(self.expand(address, Some(gas_recorder)), vec![]);
+        if address >  self.bytes.len().max(length)  - length {
+            return_tuple_if_error!(self.expand(address + length, Some(gas_recorder)), vec![]);
         }
         (
             ExecutionResult::InProgress,
@@ -237,23 +249,23 @@ impl Memory {
     #[inline]
     fn expand(
         &mut self,
-        new_max_address: usize,
+        new_length: usize,
         gas_recorder: Option<&mut GasRecorder>,
     ) -> ExecutionResult {
         // TODO add max memory size checks
-        if new_max_address == 0 {
+        if new_length == 0 {
             return ExecutionResult::InProgress;
         }
-        self.max_index = new_max_address;
+        self.max_index = new_length;
         match gas_recorder {
             Some(gas_recorder) => {
-                gas_recorder.record_memory_gas_usage(self.bytes.len(), new_max_address);
+                gas_recorder.record_memory_gas_usage(self.bytes.len(), new_length);
                 return_if_gas_too_high!(gas_recorder);
             }
             _ => {}
         }
 
-        self.bytes.resize(new_max_address, 0);
+        self.bytes.resize(new_length, 0);
         ExecutionResult::InProgress
     }
 }
@@ -270,3 +282,13 @@ impl Index<usize> for Memory {
 // // TODO tests
 // 838137708090664833
 // 838137708090664833
+fn copy_bytes(src: &[u8], src_index: usize, dest: &mut [u8], dest_index: usize, length: usize) {
+    for i in 0..length {
+        let src_byte = if src_index + i < src.len() {
+            src[src_index + i]
+        } else {
+            0 // If index is out of bounds, write 0
+        };
+        dest[dest_index + i] = src_byte;
+    }
+}

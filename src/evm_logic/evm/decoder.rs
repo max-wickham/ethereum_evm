@@ -394,7 +394,7 @@ pub fn decode_instruction(
 
         opcodes::CALLDATACOPY => {
             // TODO fix
-            let (dest_offset, offset, size) = (pop_usize!(evm), pop_usize!(evm), pop_usize!(evm));
+            let (dest_offset, offset, size) = (pop_usize!(evm), pop!(evm), pop_usize!(evm));
             evm.gas_recorder
                 .record_gas_usage(DynamicCosts::Copy { size_bytes: size }.cost());
             return_if_gas_too_high!(evm.gas_recorder);
@@ -417,9 +417,11 @@ pub fn decode_instruction(
             evm.gas_recorder
                 .record_gas_usage(DynamicCosts::Copy { size_bytes: size }.cost());
             return_if_gas_too_high!(evm.gas_recorder);
-            return_if_error!(evm.memory.copy_from(
-                &mut evm.program,
-                offset,
+            println!("Not copied yet");
+            // Should not expand the program
+            return_if_error!(evm.memory.copy_from_bytes(
+                &mut evm.program.bytes,
+                U256::from(offset),
                 dest_offset,
                 size,
                 &mut evm.gas_recorder
@@ -454,8 +456,8 @@ pub fn decode_instruction(
                 .cost(),
             );
             return_if_error!(evm.memory.copy_from_bytes(
-                &runtime.code(addr),
-                offset,
+                &mut runtime.code(addr),
+                U256::from(offset),
                 dest_offset,
                 size,
                 &mut evm.gas_recorder

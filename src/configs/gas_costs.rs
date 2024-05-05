@@ -171,6 +171,8 @@ impl DynamicCosts {
             }
 
             DynamicCosts::Copy { size_bytes } => {
+                println!("size_bytes: {}", size_bytes);
+                println!("size_bytes.div_ceil(32): {}", size_bytes.div_ceil(32) as u64);
                 static_costs::G_VERY_LOW  + static_costs::G_COPY * (size_bytes.div_ceil(32) as u64)
             }
 

@@ -3,7 +3,6 @@ Convenient to keep this as a macro as allows for early returns and error handlin
 Should be converted to function once proper error handling is introduced
 */
 
-
 use super::macros::pop_u64;
 use super::{macros::pop, EVMContext, Message};
 use crate::configs::gas_costs::DynamicCosts;
@@ -14,7 +13,6 @@ use crate::result::{ExecutionError, ExecutionResult, ExecutionSuccess};
 use crate::runtime::Runtime;
 
 use primitive_types::U256;
-
 
 #[inline]
 pub fn call(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool) -> ExecutionResult {
@@ -51,11 +49,16 @@ pub fn call(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool) -> Ex
         .cost(),
     );
     if evm.gas_recorder.gas_input > evm.gas_recorder.gas_usage {
-        println!("Gas usage {:x}", evm.gas_recorder.gas_input - evm.gas_recorder.gas_usage);
+        println!(
+            "Gas usage {:x}",
+            evm.gas_recorder.gas_input - evm.gas_recorder.gas_usage
+        );
     }
     return_if_gas_too_high!(evm.gas_recorder);
     match make_call(evm, runtime, debug, call_args, false) {
-        ExecutionResult::Error(_) => ExecutionResult::Success(ExecutionSuccess::RevertedTransaction),
+        ExecutionResult::Error(_) => {
+            ExecutionResult::Success(ExecutionSuccess::RevertedTransaction)
+        }
         ExecutionResult::Success(_) => ExecutionResult::InProgress,
         ExecutionResult::InProgress => panic!("Call should not be still in progress"),
     }
@@ -100,7 +103,9 @@ pub fn call_code(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool) 
     );
     return_if_gas_too_high!(evm.gas_recorder);
     match make_call(evm, runtime, debug, call_args, false) {
-        ExecutionResult::Error(_) => ExecutionResult::Success(ExecutionSuccess::RevertedTransaction),
+        ExecutionResult::Error(_) => {
+            ExecutionResult::Success(ExecutionSuccess::RevertedTransaction)
+        }
         ExecutionResult::Success(_) => ExecutionResult::InProgress,
         ExecutionResult::InProgress => panic!("Call should not be still in progress"),
     }
@@ -145,15 +150,20 @@ pub fn delegate_call(
     );
     return_if_gas_too_high!(evm.gas_recorder);
     match make_call(evm, runtime, debug, call_args, false) {
-        ExecutionResult::Error(_) => ExecutionResult::Success(ExecutionSuccess::RevertedTransaction),
+        ExecutionResult::Error(_) => {
+            ExecutionResult::Success(ExecutionSuccess::RevertedTransaction)
+        }
         ExecutionResult::Success(_) => ExecutionResult::InProgress,
         ExecutionResult::InProgress => panic!("Call should not be still in progress"),
     }
 }
 
-
 #[inline]
-pub fn static_call(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool) -> ExecutionResult {
+pub fn static_call(
+    evm: &mut EVMContext,
+    runtime: &mut impl Runtime,
+    debug: bool,
+) -> ExecutionResult {
     let (mut gas, address, args_offset, args_size, ret_offset, ret_size) = (
         pop!(evm).as_u64(),
         pop!(evm),
@@ -185,12 +195,13 @@ pub fn static_call(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool
     return_if_gas_too_high!(evm.gas_recorder);
     runtime.mark_hot(address);
     match make_call(evm, runtime, debug, call_args, true) {
-        ExecutionResult::Error(_) => ExecutionResult::Success(ExecutionSuccess::RevertedTransaction),
+        ExecutionResult::Error(_) => {
+            ExecutionResult::Success(ExecutionSuccess::RevertedTransaction)
+        }
         ExecutionResult::Success(_) => ExecutionResult::InProgress,
         ExecutionResult::InProgress => panic!("Call should not be still in progress"),
     }
 }
-
 
 pub struct CallArgs {
     pub gas: u64,
@@ -210,14 +221,17 @@ pub fn make_call(
     runtime: &mut impl Runtime,
     debug: bool,
     args: CallArgs,
-    is_static: bool
+    is_static: bool,
 ) -> ExecutionResult {
     let code: Vec<u8> = runtime.code(args.code_address);
     let gas = args
         .gas
         .min((evm.gas_input - evm.gas_recorder.gas_usage.clone() as u64) * 63 / 64);
-    if args.args_offset.checked_add( args.args_size).is_none() || (args.args_offset + args.args_size > evm.memory.bytes.len()) {
-        evm.gas_recorder.record_gas_usage(evm.gas_recorder.gas_input as u64);
+    if args.args_offset.checked_add(args.args_size).is_none()
+        || (args.args_offset + args.args_size > evm.memory.bytes.len())
+    {
+        evm.gas_recorder
+            .record_gas_usage(evm.gas_recorder.gas_input as u64);
         return ExecutionResult::Error(ExecutionError::InvalidMemSize);
     }
     let mut sub_evm = EVMContext::create_sub_context(
@@ -232,7 +246,7 @@ pub fn make_call(
         evm.transaction.clone(),
         evm.gas_price,
         evm.nested_index + 1,
-        is_static
+        is_static,
     );
     runtime.add_context();
     let execution_result = sub_evm.execute_program(runtime, debug);
@@ -240,44 +254,58 @@ pub fn make_call(
         ExecutionResult::Error(error) => {
             runtime.revert_context();
             match &error {
-            ExecutionError::Revert(result) => {
-                handle_return_data(evm, result, args.ret_offset, args.ret_size);
+                ExecutionError::Revert(result) => {
+                    handle_return_data(evm, result, args.ret_offset, args.ret_size);
+                }
+                _ => {
+                    evm.last_return_data = Memory::new();
+                }
             }
-            _ => {
-                evm.last_return_data = Memory::new();
-            }
-        }},
+        }
         ExecutionResult::Success(success) => {
             println!("Merging context");
             runtime.merge_context();
             match success {
-            ExecutionSuccess::Return(result) => {
-                handle_return_data(evm, result, args.ret_offset, args.ret_size);
+                ExecutionSuccess::Return(result) => {
+                    handle_return_data(evm, result, args.ret_offset, args.ret_size);
+                }
+                _ => {
+                    evm.last_return_data = Memory::new();
+                }
             }
-            _ => {
-                evm.last_return_data = Memory::new();
-            }
-        }},
+        }
         ExecutionResult::InProgress => {
             panic!("Program shouldn't have excited whilst in progress");
         }
     }
-    evm.gas_recorder.merge(&sub_evm.gas_recorder, &execution_result);
-    push!(evm,U256::from(match execution_result {
-        ExecutionResult::Success(_) => true,
-        _ => false,
-    } as u64));
+    evm.gas_recorder
+        .merge(&sub_evm.gas_recorder, &execution_result);
+    push!(
+        evm,
+        U256::from(match execution_result {
+            ExecutionResult::Success(_) => true,
+            _ => false,
+        } as u64)
+    );
     if evm.gas_recorder.gas_input > evm.gas_recorder.gas_usage {
-        println!("Gas usage 1 {:x}", evm.gas_recorder.gas_input - evm.gas_recorder.gas_usage);
+        println!(
+            "Gas usage 1 {:x}",
+            evm.gas_recorder.gas_input - evm.gas_recorder.gas_usage
+        );
     }
     execution_result
 }
 
-fn handle_return_data(evm: &mut EVMContext, return_data: &Vec<u8>, ret_offset: usize, ret_size: usize) {
+fn handle_return_data(
+    evm: &mut EVMContext,
+    return_data: &[u8],
+    ret_offset: usize,
+    ret_size: usize,
+) {
     evm.last_return_data = Memory::from(&return_data.clone(), None);
     evm.memory.copy_from_bytes(
-        &return_data,
-        0,
+        return_data,
+        U256::from(0),
         ret_offset,
         ret_size,
         &mut evm.gas_recorder,

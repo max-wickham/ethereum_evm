@@ -22,9 +22,12 @@ use crate::mocks::mock_runtime::{Contract, MockRuntime};
 use official_test_types::types::{TestState, TestStateMulti};
 
 generate_official_tests!(
-    "./tests/official_tests/tests/GeneralStateTests/VMTests"
+    "./tests/official_tests/tests/GeneralStateTests/VMTests/vmTests/calldatacopy.json"
 );
-generate_official_tests!("./tests/official_tests/tests/GeneralStateTests/stMemoryTest");
+// generate_official_tests!(
+//     "./tests/official_tests/tests/GeneralStateTests/VMTests"
+// );
+// generate_official_tests!("./tests/official_tests/tests/GeneralStateTests/stMemoryTest");
 
 pub fn run_test_file(filename: String, debug: bool, index: usize) {
     let tests: BTreeMap<String, TestStateMulti> =

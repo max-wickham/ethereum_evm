@@ -48,6 +48,7 @@ impl GasRecorder {
             self.gas_usage = u64::MAX as usize;
             return;
         }
+        println!("Memory expansion cost: {:x}", memory_expansion_cost);
         self.gas_usage += memory_expansion_cost;
     }
 
@@ -78,8 +79,10 @@ fn call_data_gas_cost(data: &[u8]) -> u64 {
     let mut cost = 0;
     for byte in data {
         if *byte == 0 {
+            // TODO put into static costs
             cost += 4;
         } else {
+            // TODO put into static costs
             cost += 16;
         }
     }
