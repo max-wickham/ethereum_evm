@@ -302,7 +302,7 @@ fn handle_return_data(
     ret_offset: usize,
     ret_size: usize,
 ) {
-    evm.last_return_data = Memory::from(&return_data.clone(), None);
+    evm.last_return_data = Memory::from(&return_data, Some(&mut evm.gas_recorder));
     evm.memory.copy_from_bytes(
         return_data,
         U256::from(0),

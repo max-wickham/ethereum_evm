@@ -21,12 +21,12 @@ use crate::mocks::mock_runtime::{Contract, MockRuntime};
 
 use official_test_types::types::{TestState, TestStateMulti};
 
-generate_official_tests!(
-    "./tests/official_tests/tests/GeneralStateTests/VMTests/vmTests/calldatacopy.json"
-);
 // generate_official_tests!(
-//     "./tests/official_tests/tests/GeneralStateTests/VMTests"
+//     "./tests/official_tests/tests/GeneralStateTests/VMTests/vmIOandFlowOperations"
 // );
+generate_official_tests!(
+    "./tests/official_tests/tests/GeneralStateTests/VMTests/vmTests/"
+);
 // generate_official_tests!("./tests/official_tests/tests/GeneralStateTests/stMemoryTest");
 
 pub fn run_test_file(filename: String, debug: bool, index: usize) {

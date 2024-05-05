@@ -143,17 +143,20 @@ pub fn decode_instruction(
                     push!(evm, U256::zero());
                 }
                 _ => {
-                    let result = a.checked_rem(c)
-                    .unwrap()
-                    .overflowing_add(b.checked_rem(c).unwrap())
-                    .0;
+                    let result = a
+                        .checked_rem(c)
+                        .unwrap()
+                        .overflowing_add(b.checked_rem(c).unwrap())
+                        .0;
                     println!("result: {:?}", result);
                     push!(
                         evm,
                         a.checked_rem(c)
                             .unwrap()
                             .overflowing_add(b.checked_rem(c).unwrap())
-                            .0.checked_rem(c).unwrap()
+                            .0
+                            .checked_rem(c)
+                            .unwrap()
                     );
                 }
             }
@@ -312,12 +315,10 @@ pub fn decode_instruction(
             let (shift, value) = (pop!(evm), pop!(evm));
             let sign = value.bit(255);
             if shift >= 256.into() {
-                push!(evm, if sign {U256::MAX} else {ZERO});
-            }
-            else if !sign {
+                push!(evm, if sign { U256::MAX } else { ZERO });
+            } else if !sign {
                 push!(evm, value.shr(shift.as_u64()));
-            }
-            else {
+            } else {
                 let value = value.shr(shift);
                 let mask = U256::MAX;
                 let mask = mask.shl(256 as u64 - shift.as_u64());
@@ -603,8 +604,13 @@ pub fn decode_instruction(
                 u256_to_h256(value),
             );
             runtime.set_storage(evm.contract_address, key, u256_to_h256(value));
-            println!("v_ord: {:?}, v_cur: {:?}, v_new: {:?}, target_is_cold: {:?}",
-                     v_org, v_cur, v_new, runtime.is_cold_index(evm.contract_address, key));
+            println!(
+                "v_ord: {:?}, v_cur: {:?}, v_new: {:?}, target_is_cold: {:?}",
+                v_org,
+                v_cur,
+                v_new,
+                runtime.is_cold_index(evm.contract_address, key)
+            );
             let dynamic_cost = DynamicCosts::SStore {
                 original: v_org,
                 current: v_cur,
@@ -665,6 +671,7 @@ pub fn decode_instruction(
             evm.program_counter += push_number as usize;
             push!(evm, U256::from_big_endian(bytes.as_slice()));
             evm.gas_recorder.record_gas_usage(static_costs::G_VERY_LOW);
+            println!("val {:?}",U256::from_big_endian(bytes.as_slice()));
         }
 
         opcodes::DUP_1..=opcodes::DUP_16 => {
@@ -675,12 +682,18 @@ pub fn decode_instruction(
         }
 
         opcodes::SWAP_1..=opcodes::SWAP_16 => {
+            // println!("stack: {:?}", evm.stack.data);
+            // println!("stack pointer: {:?}", evm.stack.stack_pointer);
             let swap_number: usize = (opcode - opcodes::SWAP_1 + 1) as usize;
+            // println!("swap_number: {:?}", swap_number);
             let bottom_value = evm.stack.read_nth(swap_number);
-            let top_value = pop!(evm);
-            evm.stack.write_nth(swap_number - 1, top_value);
-            push!(evm, bottom_value);
+            let top_value = evm.stack.read_nth(0);
+            evm.stack.write_nth(swap_number, top_value);
+            evm.stack.write_nth(0, bottom_value);
+            // push!(evm, bottom_value);
             evm.gas_recorder.record_gas_usage(static_costs::G_VERY_LOW);
+            // println!("top_value: {:?}, bottom_value: {:?}", top_value, bottom_value);
+            // println!("stack: {:?}", evm.stack.data);
         }
 
         // TODO log
@@ -730,13 +743,17 @@ pub fn decode_instruction(
                 let len = offset.checked_add(size);
                 match len {
                     Some(len) => {
-                        evm.gas_recorder
-                            .record_memory_gas_usage(evm.memory.len(), len);
+                        if size > 0 {
+                            evm.gas_recorder
+                                .record_memory_gas_usage(evm.memory.len(), len);
+                            println!("Recorded gas usage return");
+                        }
                     }
                     None => {
                         evm.gas_recorder.set_gas_usage_to_max();
                         return ExecutionResult::Error(ExecutionError::InvalidMemoryAccess);
                     }
+                    _ => {}
                 }
             }
             return_if_error!(evm.check_gas_usage());
@@ -775,7 +792,10 @@ pub fn decode_instruction(
                 }
             }
             return_if_error!(evm.check_gas_usage());
-            println!("evm.memory: {:?}", evm.memory.to_sub_vec(offset, offset + size).len());
+            println!(
+                "evm.memory: {:?}",
+                evm.memory.to_sub_vec(offset, offset + size).len()
+            );
             return ExecutionResult::Error(ExecutionError::Revert(
                 evm.memory.to_sub_vec(offset, offset + size),
             ));

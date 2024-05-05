@@ -5,8 +5,8 @@ use crate::evm_logic::util::ZERO;
 const STACK_SIZE: usize = 1024;
 
 pub struct Stack {
-    data: [U256; STACK_SIZE],
-    stack_pointer: usize,
+    pub data: [U256; STACK_SIZE],
+    pub stack_pointer: usize,
 }
 
 impl Stack {
@@ -40,12 +40,12 @@ impl Stack {
     // TODO add error handling here
     #[inline]
     pub fn read_nth(&self, offset: usize) -> U256 {
-        self.data[self.stack_pointer - offset]
+        self.data[self.stack_pointer - offset - 1]
     }
 
     // TODO add error handling here
     #[inline]
     pub fn write_nth(&mut self, offset: usize, value: U256) {
-        self.data[self.stack_pointer - offset] = value;
+        self.data[self.stack_pointer - offset - 1] = value;
     }
 }
