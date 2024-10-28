@@ -17,6 +17,12 @@ pub struct Memory {
 }
 
 impl Memory {
+
+    // TODO remove execution results
+        // Instead return Result<(),ExecutionError>
+
+    // Memory is a vec of bytes
+    // Max index: ???
     #[inline]
     pub fn new() -> Memory {
         Memory {
@@ -36,16 +42,21 @@ impl Memory {
         memory
     }
 
-    // TODO need to add unit tests for this
+    // TODO switch to offset to remove risk of parsing end smaller than size
     pub fn to_sub_vec(&self, start: usize, end: usize) -> Vec<u8> {
         /*
         Extract a sub vector, padded with 0s if the range is not contained within the memory length
         */
+        // println!("Start: {:x}, End: {:x}", start, end);
         if self.len() == 0 {
             return vec![0; end.max(start) - start];
         }
+        if end - start == 0 {
+            return vec![];
+        }
         let len: usize = self.bytes.len();
-        let sub_len = end.max(start) - start;
+        assert!(end >= start);
+        let sub_len = end - start;
         let mut result = self.bytes[start.min(len - 1)..end.min(len)].to_vec();
         let mut padding_bytes: Vec<u8> = vec![0; sub_len - result.len()];
         result.append(&mut padding_bytes);
@@ -119,10 +130,10 @@ impl Memory {
         gas_recorder: &mut GasRecorder,
     ) -> ExecutionResult {
         // TODO should be kept as U256 as maybe the gas input is high enough for this?
-        println!("Read from {:x}", read_address);
+        // println!("Read from {:x}", read_address);
         if write_address.checked_add(length).is_none()
         {
-            println!("Checked add failed");
+            // println!("Checked add failed");
             gas_recorder.record_gas_usage(gas_recorder.gas_input as u64);
             return ExecutionResult::Error(ExecutionError::InsufficientGas);
         }
@@ -191,7 +202,7 @@ impl Memory {
     ) -> (ExecutionResult, U256) {
         // TODO add memory expansion cost?
         if self.bytes.len() < 32 || address > self.bytes.len() - 32 {
-            println!("Memory read out of bounds: {:?}", address);
+            // println!("Memory read out of bounds: {:?}", address);
             return_tuple_if_error!(self.expand(address + 32, Some(gas_recorder)), ZERO);
         }
         let bytes_to_copy = &self.bytes[address..address + 32];
@@ -237,7 +248,7 @@ impl Memory {
         length: usize,
         gas_recorder: &mut GasRecorder,
     ) -> (ExecutionResult, Vec<u8>) {
-        if address >  self.bytes.len().max(length)  - length {
+        if self.bytes.len() < length || address >  self.bytes.len().max(length) - length {
             return_tuple_if_error!(self.expand(address + length, Some(gas_recorder)), vec![]);
         }
         (
@@ -247,16 +258,18 @@ impl Memory {
     }
 
     #[inline]
-    fn expand(
+    pub fn expand(
         &mut self,
         new_length: usize,
         gas_recorder: Option<&mut GasRecorder>,
     ) -> ExecutionResult {
+        if new_length <= self.bytes.len() {
+            return ExecutionResult::InProgress;
+        }
         // TODO add max memory size checks
         if new_length == 0 {
             return ExecutionResult::InProgress;
         }
-        self.max_index = new_length;
         match gas_recorder {
             Some(gas_recorder) => {
                 gas_recorder.record_memory_gas_usage(self.bytes.len(), new_length);
@@ -264,6 +277,11 @@ impl Memory {
             }
             _ => {}
         }
+        let mut new_length = new_length;
+        if new_length % 32 != 0 {
+            new_length = new_length + 32 - (new_length % 32);
+        }
+        self.max_index = new_length;
 
         self.bytes.resize(new_length, 0);
         ExecutionResult::InProgress

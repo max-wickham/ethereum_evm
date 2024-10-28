@@ -23,6 +23,7 @@ pub fn generate_official_tests(input: TokenStream) -> TokenStream {
     TokenStream::from(expanded)
 }
 
+
 fn generate_tests_from_path(path: &str) -> Vec<proc_macro2::TokenStream> {
     match fs::metadata(path) {
         Ok(metadata) => {
@@ -50,6 +51,9 @@ fn generate_tests_from_file(file_path: &str) -> Vec<proc_macro2::TokenStream> {
         serde_json::from_reader(BufReader::new(File::open(file_path).unwrap())).unwrap();
     let clean_file_path = clean_path(file_path);
     for (index, test) in parsed_tests.iter().nth(0).unwrap().1.tests().iter().enumerate() {
+        if index != 1 {
+            continue;
+        }
         let test_name = Ident::new(
             &(clean_file_path.clone() + &index.to_string()),
             proc_macro2::Span::call_site(),

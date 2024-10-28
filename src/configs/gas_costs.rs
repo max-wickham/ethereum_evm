@@ -1,6 +1,7 @@
 use std::ops::Div;
 
 use primitive_types::{H256, U256};
+use static_costs::{G_COLD_ACCOUNT_ACCESS, G_NEW_ACCOUNT, G_SELF_DESTRUCT};
 
 use crate::evm_logic::util::{ZERO, ZERO_H256};
 
@@ -57,6 +58,7 @@ pub enum DynamicCosts {
         target_is_cold: bool,
         empty_account: bool,
         is_delegate: bool,
+        is_code: bool,
     },
     StaticCall {
         /// Call gas.
@@ -107,11 +109,16 @@ pub enum DynamicCosts {
     ExtCodeCopy {
         target_is_cold: bool,
         size_bytes: usize,
+    },
+    SelfDestruct {
+        address_exists: bool,
+        is_cold: bool,
     }
 }
 
 impl DynamicCosts {
     // TODO add error here
+    #[inline]
     pub fn cost(&self) -> u64 {
         match self {
             DynamicCosts::Balance { target_is_cold } => {
@@ -140,7 +147,10 @@ impl DynamicCosts {
                 empty_account,
                 target_is_cold,
                 is_delegate,
+                is_code,
             } => {
+                println!("empty_account: {}", empty_account);
+                println!("target_is_cold {}", target_is_cold);
 
                 0 + if *target_is_cold {
                     static_costs::G_COLD_ACCOUNT_ACCESS
@@ -150,7 +160,7 @@ impl DynamicCosts {
                 if !value.eq(&ZERO) & !is_delegate {
                     static_costs::G_CALL_VALUE - static_costs::G_CALL_STIPEND
                 } else {0} +
-                if *empty_account {
+                if !value.eq(&ZERO) & *empty_account & !is_delegate &!is_code {
                     static_costs::G_NEW_ACCOUNT
                 } else {0}
             }
@@ -212,6 +222,13 @@ impl DynamicCosts {
                 gas_cost
 
             }
+            DynamicCosts::SelfDestruct { address_exists, is_cold} => {
+                G_SELF_DESTRUCT + if !*address_exists {
+                    G_NEW_ACCOUNT
+                } else {
+                    if *is_cold { G_COLD_ACCOUNT_ACCESS } else { 0 }
+                }
+            }
             _ => 0,
         }
     }
@@ -223,6 +240,9 @@ impl DynamicCosts {
                 } else {
                     0
                 }
+            }
+            DynamicCosts::SelfDestruct { address_exists, is_cold } => {
+                24000
             }
             _ => 0,
         }

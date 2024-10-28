@@ -2,6 +2,9 @@
 
 #[derive(Clone, Debug)]
 pub enum ExecutionError {
+    InsufficientBalance,
+    InvalidAddress,
+    InvalidJump,
     ExcitedEarly,
     InsufficientValuesOnStack,
     StackOverflow,
@@ -10,6 +13,7 @@ pub enum ExecutionError {
     InvalidMemSize,
     InvalidMemoryAccess,
     Halted,
+    StackUnderflow,
     Revert(Vec<u8>),
 }
 

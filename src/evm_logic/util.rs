@@ -2,7 +2,7 @@ use std::{ops::Not, str::FromStr};
 
 use lazy_static::lazy_static;
 use num256::{Int256, Uint256};
-use primitive_types::{H256, U256};
+use primitive_types::{H256, U256, U512};
 use sha3::{Digest, Keccak256};
 
 pub const ZERO: U256 = U256::zero();
@@ -95,4 +95,11 @@ pub fn int256_to_uint256(v: Int256) -> Uint256 {
     } else {
         v.to_uint256().unwrap()
     }
+}
+
+
+pub fn u512_to_u256_checked(x: U512) -> U256 {
+    let mut bytes = [0u8; 64];
+    x.to_little_endian(&mut bytes);
+    U256::from_little_endian(&bytes[0..32])
 }

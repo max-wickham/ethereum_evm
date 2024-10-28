@@ -1,5 +1,5 @@
-use ethereum_evm::util::{h256_to_u256, keccak256, u256_to_h256};
 use ethereum_evm::runtime::Runtime;
+use ethereum_evm::util::{h256_to_u256, keccak256, u256_to_h256};
 use hex::encode;
 use primitive_types::{H160, H256, U256};
 use rlp::{Encodable, RlpStream};
@@ -151,15 +151,27 @@ impl Runtime for MockRuntime {
     // TODO add default values if address is not found
     // Context state
     fn balance(&self, address: U256) -> U256 {
+        if !self.exists(address) {
+            return U256::from(0 as u64);
+        }
         self.current_context.as_ref().unwrap().contracts[&address].balance
     }
     fn code_size(&self, address: U256) -> U256 {
+        if !self.exists(address) {
+            return U256::from(0 as u64);
+        }
         self.current_context.as_ref().unwrap().contracts[&address].code_size
     }
     fn code_hash(&self, address: U256) -> H256 {
+        // if !self.exists(address) {
+        //     return H256::from(0 as u64);
+        // }
         self.current_context.as_ref().unwrap().contracts[&address].code_hash
     }
     fn nonce(&self, address: U256) -> U256 {
+        if !self.exists(address) {
+            return U256::from(0 as u64);
+        }
         self.current_context.as_ref().unwrap().contracts[&address].nonce
     }
     fn code(&self, address: U256) -> Vec<u8> {
@@ -196,6 +208,9 @@ impl Runtime for MockRuntime {
         self.current_context.as_ref().unwrap().contracts[&address].is_deleted
     }
     fn is_cold(&self, address: U256) -> bool {
+        if !self.exists(address) {
+            return true;
+        }
         self.current_context.as_ref().unwrap().contracts[&address].is_cold
     }
     fn is_cold_index(&self, address: U256, index: U256) -> bool {
@@ -232,7 +247,7 @@ impl Runtime for MockRuntime {
             .storage
             .insert(u256_to_h256(index), value);
         // for (address, contract) in &self.current_context.as_ref().unwrap().contracts {
-        //     println!("Storage: {:?}", contract.storage);
+        // println!("Storage: {:?}", contract.storage);
         // }
     }
     fn mark_delete(&mut self, address: U256) {
@@ -272,6 +287,15 @@ impl Runtime for MockRuntime {
             .balance = U256::from(0 as u64);
     }
     fn deposit(&mut self, target: U256, value: U256) {
+        if !self
+            .current_context
+            .as_ref()
+            .unwrap()
+            .contracts
+            .contains_key(&target)
+        {
+            self.create_contract(target, vec![]);
+        }
         self.current_context
             .as_mut()
             .unwrap()
@@ -281,6 +305,10 @@ impl Runtime for MockRuntime {
             .balance += value;
     }
     fn withdrawal(&mut self, source: U256, value: U256) {
+        println!(
+            "Withdrawal: {:?}",
+            self.current_context.as_ref().unwrap().contracts[&source].balance
+        );
         self.current_context
             .as_mut()
             .unwrap()
@@ -288,6 +316,7 @@ impl Runtime for MockRuntime {
             .get_mut(&source)
             .unwrap()
             .balance -= value;
+        println!("Withdrawal: {:?}", self.balance(source));
     }
     fn increase_nonce(&mut self, address: U256) {
         self.current_context
@@ -350,6 +379,18 @@ impl Runtime for MockRuntime {
         };
     }
     fn merge_context(&mut self) {
+        let mut marked_address = vec![];
+        {
+            let current_context = self.current_context.as_ref().unwrap();
+            for (address, contract) in current_context.contracts.iter() {
+                if contract.is_deleted {
+                    marked_address.push(address.clone());
+                }
+            }
+        }
+        for address in marked_address {
+            self.delete_contract(&address);
+        }
         match mem::take(&mut self.current_context) {
             Some(mut context) => {
                 match &mut context.prev_context {
@@ -367,6 +408,7 @@ impl Runtime for MockRuntime {
                 self.current_context = None;
             }
         }
+        // iterate through the contracts and remove those that have been deleted
     }
     fn revert_context(&mut self) {
         match mem::take(&mut self.current_context) {
@@ -377,5 +419,15 @@ impl Runtime for MockRuntime {
                 self.current_context = None;
             }
         }
+    }
+}
+
+impl MockRuntime {
+    fn delete_contract(&mut self, address: &U256) {
+        self.current_context
+            .as_mut()
+            .unwrap()
+            .contracts
+            .remove(&address);
     }
 }

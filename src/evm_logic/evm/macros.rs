@@ -15,7 +15,6 @@ macro_rules! return_tuple_if_error {
     ($evm_val:expr, $val:expr) => {
         match $evm_val {
             ExecutionResult::Error(err) => {
-                println!("Error: {:?}", err);
                 return (ExecutionResult::Error(err), $val)},
             _ => {}
         }
@@ -50,7 +49,6 @@ macro_rules! pop {
         let result = $evm.stack.pop();
         let result = match result {
             Err(()) => {
-                println!("Error: {:?}", ExecutionError::InsufficientValuesOnStack);
                 $evm.gas_recorder.set_gas_usage_to_max();
                 return ExecutionResult::Error(ExecutionError::InsufficientValuesOnStack);
             }
@@ -79,16 +77,16 @@ macro_rules! pop_u64 {
         let result = $evm.stack.pop();
         let result = match result {
             Err(()) => {
-                println!("Error: {:?}", ExecutionError::InsufficientValuesOnStack);
                 $evm.gas_recorder.set_gas_usage_to_max();
                 return ExecutionResult::Error(ExecutionError::InsufficientValuesOnStack);
             }
             Ok(value) => value,
         };
         if result > U256::from(u64::MAX) {
-            println!("U256 to large: {:?}", ExecutionError::InsufficientGas);
+            println!("Result: {:x}", result);
             // This would cause an out of gas error
-            $evm.gas_recorder.gas_usage = $evm.gas_input as usize;
+            $evm.gas_recorder.set_gas_usage_to_max();
+            // $evm.gas_recorder.gas_usage = $evm.gas_input as usize;
             // TODO refactor this away as unclear
             return ExecutionResult::Error(ExecutionError::InsufficientGas);
         }
@@ -108,7 +106,6 @@ pub(crate) use pop_usize;
 macro_rules! return_if_gas_too_high {
     ($gas_recorder:expr) => {
         if !$gas_recorder.is_valid() {
-            println!("Error gas: {:?}", ExecutionError::InsufficientGas);
             $gas_recorder.gas_usage = $gas_recorder.gas_input;
             return ExecutionResult::Error(ExecutionError::InsufficientGas);
         }

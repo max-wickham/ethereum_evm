@@ -100,17 +100,13 @@ pub fn create(
     );
     runtime.increase_nonce(evm.message.caller);
     runtime.increase_nonce(address);
-    println!("Value: {:x?}", value);
-    println!("Address: {:x}", address);
     let deployed_code_size;
     match result.return_result() {
         Some(result) => {
-            println!("Code returned");
             runtime.set_contract_code(address, result.clone());
             deployed_code_size = runtime.code_size(address).as_usize();
         }
         None => {
-            println!("No code returned");
             if !leave_code_on_no_return {
                 deployed_code_size = runtime.code_size(address).as_usize();
             } else {
@@ -125,7 +121,5 @@ pub fn create(
         }
         .cost(),
     );
-    println!("deployed code size: {:x?}", deployed_code_size);
-    println!("cost of create: {:x?}", DynamicCosts::Create { deployed_code_size: deployed_code_size }.cost());
     ExecutionResult::InProgress
 }

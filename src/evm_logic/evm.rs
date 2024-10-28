@@ -11,6 +11,7 @@ use crate::result::{ExecutionError, ExecutionResult, ExecutionSuccess};
 use crate::runtime::Runtime;
 
 use super::state::memory::Memory;
+use super::state::program_memory::ProgramMemory;
 use super::state::stack::Stack;
 
 use primitive_types::U256;
@@ -30,7 +31,7 @@ struct Message {
 pub struct EVMContext {
     stack: Stack,
     memory: Memory,
-    program: Memory,
+    program: ProgramMemory,
     program_counter: usize,
     contract_address: U256,
     transaction: Transaction,
@@ -58,17 +59,11 @@ impl EVMContext {
         EVMContext {
             stack: Stack::new(),
             memory: Memory::new(),
-            program: Memory::from(
+            program: ProgramMemory::from(
                 &code,
-                Some(&mut GasRecorder {
-                    gas_input: gas as usize,
-                    gas_usage: 0,
-                    gas_refunds: 0,
-                }),
             ),
             program_counter: 0,
             contract_address: address,
-            // TODO remove need to clone here
             transaction: transaction,
             message: message,
             last_return_data: Memory::new(),
@@ -88,9 +83,10 @@ impl EVMContext {
     fn execute_program(&mut self, runtime: &mut impl Runtime, debug: bool) -> ExecutionResult {
         runtime.add_context();
         let mut result;
+        let jump_dests = decoder::calculate_jump_dests(self);
         if self.program.len() != 0 {
             loop {
-                result = self.execute_next_instruction(runtime, debug);
+                result = self.execute_next_instruction(runtime, &jump_dests, debug);
                 match &result {
                     ExecutionResult::InProgress => {}
                     _ => {
@@ -107,6 +103,7 @@ impl EVMContext {
         } else {
             self.gas_recorder.gas_usage as u64
         } as usize;
+
         if debug {
             println!("Sub Gas Usage {:x}", self.gas_recorder.gas_usage);
         }
@@ -121,7 +118,6 @@ impl EVMContext {
                 panic!("Program shouldn't have excited in progress");
             }
         }
-
         result
     }
 
@@ -129,9 +125,10 @@ impl EVMContext {
     fn execute_next_instruction(
         &mut self,
         runtime: &mut impl Runtime,
+        jump_dests: &[usize],
         debug: bool,
     ) -> ExecutionResult {
-        decoder::decode_instruction(self, runtime, debug)
+        decoder::decode_instruction(self, runtime, jump_dests, debug)
     }
 
     #[inline]
@@ -168,6 +165,7 @@ pub fn execute_transaction(
         origin: origin,
         gas_price: gas_price,
     };
+
     let mut evm = EVMContext::create_sub_context(
         contract_address,
         message,
@@ -178,6 +176,7 @@ pub fn execute_transaction(
         0,
         false,
     );
+
     evm.gas_recorder
         .record_gas_usage(static_costs::G_TRANSACTION);
     evm.gas_recorder
@@ -187,5 +186,24 @@ pub fn execute_transaction(
     }
     let result = evm.execute_program(runtime, debug);
     let gas_usage = evm.gas_recorder.usage_with_refunds();
+
+    // Increase Nonce and deposit the value
+    runtime.increase_nonce(origin);
+    match result {
+        ExecutionResult::Success(_) => {
+            runtime.deposit(contract_address, value);
+            // withdraw the value from the sender
+            runtime.withdrawal(origin, value);
+        }
+        _ => {}
+    }
+    // Withdraw the gas from the wallet
+    let eth_usage = (gas_usage) * gas_price.as_usize();
+    runtime.withdrawal(origin, U256::from(eth_usage as u64));
+    runtime.deposit(runtime.block_coinbase(), U256::from(eth_usage as u64));
+
+    // TODO handle not enough eth for gas and value
+
+    runtime.merge_context();
     return (result, gas_usage);
 }

@@ -48,7 +48,7 @@ impl GasRecorder {
             self.gas_usage = u64::MAX as usize;
             return;
         }
-        println!("Memory expansion cost: {:x}", memory_expansion_cost);
+        // println!("Memory expansion cost: {:x}", memory_expansion_cost);
         self.gas_usage += memory_expansion_cost;
     }
 

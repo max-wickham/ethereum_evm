@@ -39,13 +39,23 @@ impl Stack {
 
     // TODO add error handling here
     #[inline]
-    pub fn read_nth(&self, offset: usize) -> U256 {
-        self.data[self.stack_pointer - offset - 1]
+    pub fn read_nth(&self, offset: usize) -> Result<U256, ()> {
+        if self.stack_pointer < offset + 1 {
+            return Err(());
+        }
+        Ok(self.data[self.stack_pointer - offset - 1])
     }
 
     // TODO add error handling here
     #[inline]
-    pub fn write_nth(&mut self, offset: usize, value: U256) {
+    pub fn write_nth(&mut self, offset: usize, value: U256) -> Result<(),()> {
+        if self.stack_pointer < offset + 1 {
+            return Err(());
+        }
+        if self.stack_pointer - offset - 1 > 256 {
+            return Err(());
+        }
         self.data[self.stack_pointer - offset - 1] = value;
+        Ok(())
     }
 }
