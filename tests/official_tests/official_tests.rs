@@ -25,16 +25,16 @@ use official_test_types::types::{TestState, TestStateMulti};
 //     "./tests/official_tests/tests/GeneralStateTests/VMTests/vmBitwiseLogicOperation"
 // );
 
-generate_official_tests!(
-    "./tests/official_tests/tests/GeneralStateTests/VMTests/vmTests/sha3.json"
-);
+// generate_official_tests!(
+//     "./tests/official_tests/tests/GeneralStateTests/VMTests/vmIOandFlowOperations"
+// );
 // generate_official_tests!(
 //     "./tests/official_tests/tests/ABITests"
 // );
-// generate_official_tests!(
-//     "./tests/official_tests/tests/GeneralStateTests/VMTests"
-// );
-// generate_official_tests!("./tests/official_tests/tests/GeneralStateTests/stMemoryTest");
+generate_official_tests!(
+    "./tests/official_tests/tests/GeneralStateTests/stZeroKnowledge"
+);
+// generate_official_tests!("./tests/official_tests/tests/GeneralStateTests/VMTests/vmTests/suicide.json");
 
 pub fn run_test_file(filename: String, debug: bool, index: usize) {
     let tests: BTreeMap<String, TestStateMulti> =

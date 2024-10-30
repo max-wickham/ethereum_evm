@@ -82,6 +82,13 @@ impl EVMContext {
     #[inline]
     fn execute_program(&mut self, runtime: &mut impl Runtime, debug: bool) -> ExecutionResult {
         runtime.add_context();
+
+        // let num_none_zero_calldata = self.message.data.iter().filter(|x| **x != 0).count() as u64;
+        // let num_zero_calldata = self.message.data.len() as u64 - num_none_zero_calldata as u64;
+
+        // let calldata_cost = static_costs::G_ZERO + static_costs::G_TX_DATA_NON_ZERO * num_none_zero_calldata + static_costs::G_TX_DATA_ZERO * num_zero_calldata;
+        // self.gas_recorder.record_gas_usage(calldata_cost as u64);
+
         let mut result;
         let jump_dests = decoder::calculate_jump_dests(self);
         if self.program.len() != 0 {
@@ -97,6 +104,7 @@ impl EVMContext {
         } else {
             result = ExecutionResult::Error(ExecutionError::InvalidMemSize);
         }
+
         // TODO move this into gas_recorder
         self.gas_recorder.gas_usage = if self.gas_recorder.gas_usage > self.gas_input as usize {
             self.gas_input as u64
@@ -165,7 +173,10 @@ pub fn execute_transaction(
         origin: origin,
         gas_price: gas_price,
     };
+    runtime.mark_hot(contract_address);
 
+    println!("Origin: {:x}", origin);
+    println!("Contract Address: {:x}", contract_address);
     let mut evm = EVMContext::create_sub_context(
         contract_address,
         message,
@@ -184,19 +195,29 @@ pub fn execute_transaction(
     if debug {
         println!("Call Data Gas Cost: {:x}", evm.gas_recorder.gas_usage);
     }
+
+    println!("Value: {:x}", value);
+    // TODO checks here on balance
+    runtime.deposit(contract_address, value);
+    // withdraw the value from the sender
+    runtime.withdrawal(origin, value);
     let result = evm.execute_program(runtime, debug);
     let gas_usage = evm.gas_recorder.usage_with_refunds();
 
     // Increase Nonce and deposit the value
     runtime.increase_nonce(origin);
+
     match result {
         ExecutionResult::Success(_) => {
-            runtime.deposit(contract_address, value);
-            // withdraw the value from the sender
-            runtime.withdrawal(origin, value);
         }
-        _ => {}
+        _ => {
+            // Undo the value send, TODO fix this up
+            runtime.deposit(origin, value);
+            // withdraw the value from the sender
+            runtime.withdrawal(contract_address, value);
+        }
     }
+
     // Withdraw the gas from the wallet
     let eth_usage = (gas_usage) * gas_price.as_usize();
     runtime.withdrawal(origin, U256::from(eth_usage as u64));

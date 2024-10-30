@@ -1,9 +1,9 @@
 use std::ops::Div;
 
-use primitive_types::{H256, U256};
-use static_costs::{G_COLD_ACCOUNT_ACCESS, G_NEW_ACCOUNT, G_SELF_DESTRUCT};
+use primitive_types::{ H256, U256 };
+use static_costs::{ G_COLD_ACCOUNT_ACCESS, G_NEW_ACCOUNT, G_SELF_DESTRUCT };
 
-use crate::evm_logic::util::{ZERO, ZERO_H256};
+use crate::evm_logic::util::{ ZERO, ZERO_H256 };
 
 pub mod static_costs {
     pub const G_ZERO: u64 = 0;
@@ -113,7 +113,8 @@ pub enum DynamicCosts {
     SelfDestruct {
         address_exists: bool,
         is_cold: bool,
-    }
+        positive_balance: bool,
+    },
 }
 
 impl DynamicCosts {
@@ -142,67 +143,69 @@ impl DynamicCosts {
                     static_costs::G_WARM_ACCESS
                 }
             }
-            DynamicCosts::Call {
-                value,
-                empty_account,
-                target_is_cold,
-                is_delegate,
-                is_code,
-            } => {
-                println!("empty_account: {}", empty_account);
-                println!("target_is_cold {}", target_is_cold);
+            DynamicCosts::Call { value, empty_account, target_is_cold, is_delegate, is_code } => {
+                // println!("empty_account: {}", empty_account);
+                // println!("target_is_cold {}", target_is_cold);
 
-                0 + if *target_is_cold {
-                    static_costs::G_COLD_ACCOUNT_ACCESS
-                } else {
-                    static_costs::G_WARM_ACCESS
-                } +
-                if !value.eq(&ZERO) & !is_delegate {
-                    static_costs::G_CALL_VALUE - static_costs::G_CALL_STIPEND
-                } else {0} +
-                if !value.eq(&ZERO) & *empty_account & !is_delegate &!is_code {
-                    static_costs::G_NEW_ACCOUNT
-                } else {0}
+                0 +
+                    (if *target_is_cold {
+                        static_costs::G_COLD_ACCOUNT_ACCESS
+                    } else {
+                        static_costs::G_WARM_ACCESS
+                    }) +
+                    (if !value.eq(&ZERO) & !is_delegate {
+                        static_costs::G_CALL_VALUE - static_costs::G_CALL_STIPEND
+                    } else {
+                        0
+                    }) +
+                    (if !value.eq(&ZERO) & *empty_account & !is_delegate & !is_code {
+                        static_costs::G_NEW_ACCOUNT
+                    } else {
+                        0
+                    })
             }
             DynamicCosts::Keccak256 { len } => {
-                println!("Len in Keccak256: {}", len);
-                static_costs::G_KECCAK256 + (len.div_ceil(32)) * static_costs::G_KECCAK256_WORD
+                // println!("Len in Keccak256: {}", len);
+                let x =
+                    static_costs::G_KECCAK256 + len.div_ceil(32) * static_costs::G_KECCAK256_WORD;
+                // println!("Cost in Keccak256: {}", x);
+                x
             }
             DynamicCosts::Log { topic_length, size } => {
-                static_costs::G_LOG
-                    + static_costs::G_LOG_TOPIC * (*topic_length as u64)
-                    + static_costs::G_LOG_DATA * (*size as u64)
+                static_costs::G_LOG +
+                    static_costs::G_LOG_TOPIC * (*topic_length as u64) +
+                    static_costs::G_LOG_DATA * (*size as u64)
             }
 
             DynamicCosts::Exp { power } => {
                 // bytes_for_u256
                 let bytes = (power.bits() + 7) / 8;
-                static_costs::G_EXP + static_costs::G_EXP_BYTE * bytes as u64
+                static_costs::G_EXP + static_costs::G_EXP_BYTE * (bytes as u64)
             }
 
             DynamicCosts::Copy { size_bytes } => {
-                println!("size_bytes: {}", size_bytes);
-                println!("size_bytes.div_ceil(32): {}", size_bytes.div_ceil(32) as u64);
-                static_costs::G_VERY_LOW  + static_costs::G_COPY * (size_bytes.div_ceil(32) as u64)
+                // println!("size_bytes: {}", size_bytes);
+                // println!("size_bytes.div_ceil(32): {}", size_bytes.div_ceil(32) as u64);
+                static_costs::G_VERY_LOW + static_costs::G_COPY * (size_bytes.div_ceil(32) as u64)
             }
 
             DynamicCosts::ExtCodeCopy { target_is_cold, size_bytes } => {
-                println!("size_bytes: {}", size_bytes);
-                println!("size_bytes.div_ceil(32): {}", size_bytes.div_ceil(32) as u64);
+                // println!("size_bytes: {}", size_bytes);
+                // println!("size_bytes.div_ceil(32): {}", size_bytes.div_ceil(32) as u64);
                 static_costs::G_COPY * (size_bytes.div_ceil(32) as u64) +
-                if *target_is_cold {
-                    static_costs::G_COLD_ACCOUNT_ACCESS
-                } else {
-                    static_costs::G_WARM_ACCESS
-                }
+                    (if *target_is_cold {
+                        static_costs::G_COLD_ACCOUNT_ACCESS
+                    } else {
+                        static_costs::G_WARM_ACCESS
+                    })
             }
-            DynamicCosts::Create {deployed_code_size} => {
-
-                println!("Code Size {}",deployed_code_size);
-                static_costs::G_CREATE + static_costs::G_KECCAK256_WORD * (*deployed_code_size as u64).div_ceil(32)
+            DynamicCosts::Create { deployed_code_size } => {
+                // println!("Code Size {}",deployed_code_size);
+                static_costs::G_CREATE +
+                    static_costs::G_KECCAK256_WORD * (*deployed_code_size as u64).div_ceil(32)
             }
             DynamicCosts::SLoad { target_is_cold } => {
-                println!("Is cold: {}", target_is_cold);
+                // println!("Is cold: {}", target_is_cold);
                 if *target_is_cold {
                     static_costs::G_COLDS_LOAD
                 } else {
@@ -210,9 +213,9 @@ impl DynamicCosts {
                 }
             }
             DynamicCosts::SStore { original, current, new, target_is_cold } => {
-                let mut gas_cost = if *target_is_cold { static_costs::G_COLDS_LOAD } else { 0};
-                gas_cost  += if current.eq(&new) | !original.eq(&current) {
-                    println!("Warm access");
+                let mut gas_cost = if *target_is_cold { static_costs::G_COLDS_LOAD } else { 0 };
+                gas_cost += if current.eq(&new) | !original.eq(&current) {
+                    // println!("Warm access");
                     static_costs::G_WARM_ACCESS
                 } else if original.eq(&ZERO_H256) {
                     static_costs::G_SSET
@@ -220,14 +223,18 @@ impl DynamicCosts {
                     static_costs::G_SRESET
                 };
                 gas_cost
-
             }
-            DynamicCosts::SelfDestruct { address_exists, is_cold} => {
-                G_SELF_DESTRUCT + if !*address_exists {
-                    G_NEW_ACCOUNT
-                } else {
-                    if *is_cold { G_COLD_ACCOUNT_ACCESS } else { 0 }
-                }
+            DynamicCosts::SelfDestruct { address_exists, is_cold, positive_balance } => {
+                G_SELF_DESTRUCT +
+                    (if !*address_exists {
+                        if *positive_balance {
+                            G_NEW_ACCOUNT
+                        } else{
+                            0
+                        }
+                    } else {
+                        if *is_cold { G_COLD_ACCOUNT_ACCESS } else { 0 }
+                    })
             }
             _ => 0,
         }
@@ -241,9 +248,7 @@ impl DynamicCosts {
                     0
                 }
             }
-            DynamicCosts::SelfDestruct { address_exists, is_cold } => {
-                24000
-            }
+            DynamicCosts::SelfDestruct { .. } => { 24000 }
             _ => 0,
         }
     }

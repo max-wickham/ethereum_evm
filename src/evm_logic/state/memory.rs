@@ -4,11 +4,11 @@ use primitive_types::U256;
 
 use crate::evm_logic::evm::macros::return_if_error;
 use crate::evm_logic::{
-    evm::macros::{return_if_gas_too_high, return_tuple_if_error},
+    evm::macros::{ return_if_gas_too_high, return_tuple_if_error },
     gas_recorder::GasRecorder,
-    util::{u256_to_array, ZERO},
+    util::{ u256_to_array, ZERO },
 };
-use crate::result::{ExecutionError, ExecutionResult};
+use crate::result::{ ExecutionError, ExecutionResult };
 
 #[derive(Default)]
 pub struct Memory {
@@ -17,9 +17,8 @@ pub struct Memory {
 }
 
 impl Memory {
-
     // TODO remove execution results
-        // Instead return Result<(),ExecutionError>
+    // Instead return Result<(),ExecutionError>
 
     // Memory is a vec of bytes
     // Max index: ???
@@ -76,9 +75,11 @@ impl Memory {
         read_address: usize,
         write_address: usize,
         length: usize,
-        gas_recorder: &mut GasRecorder,
+        gas_recorder: &mut GasRecorder
     ) -> ExecutionResult {
-        if write_address.checked_add(length).is_none() || read_address.checked_add(length).is_none()
+        if
+            write_address.checked_add(length).is_none() ||
+            read_address.checked_add(length).is_none()
         {
             gas_recorder.record_gas_usage(gas_recorder.gas_input as u64);
             return ExecutionResult::Error(ExecutionError::InsufficientGas);
@@ -89,8 +90,9 @@ impl Memory {
         if memory.bytes.len() < read_address + length {
             return_if_error!(memory.expand(read_address + length, Some(gas_recorder)));
         }
-        self.bytes[write_address..write_address + length]
-            .copy_from_slice(&memory.bytes[read_address..(read_address + length)]);
+        self.bytes[write_address..write_address + length].copy_from_slice(
+            &memory.bytes[read_address..read_address + length]
+        );
         ExecutionResult::InProgress
     }
 
@@ -102,9 +104,11 @@ impl Memory {
         read_address: usize,
         write_address: usize,
         length: usize,
-        gas_recorder: &mut GasRecorder,
+        gas_recorder: &mut GasRecorder
     ) -> ExecutionResult {
-        if write_address.checked_add(length).is_none() || read_address.checked_add(length).is_none()
+        if
+            write_address.checked_add(length).is_none() ||
+            read_address.checked_add(length).is_none()
         {
             gas_recorder.record_gas_usage(gas_recorder.gas_input as u64);
             return ExecutionResult::Error(ExecutionError::InsufficientGas);
@@ -115,8 +119,9 @@ impl Memory {
         if memory.bytes.len() < read_address + length {
             return_if_error!(memory.expand(read_address + length, Some(gas_recorder)));
         }
-        self.bytes[write_address..write_address + length]
-            .copy_from_slice(&memory.bytes[read_address..(read_address + length)]);
+        self.bytes[write_address..write_address + length].copy_from_slice(
+            &memory.bytes[read_address..read_address + length]
+        );
         ExecutionResult::InProgress
     }
 
@@ -127,12 +132,11 @@ impl Memory {
         read_address: U256,
         write_address: usize,
         length: usize,
-        gas_recorder: &mut GasRecorder,
+        gas_recorder: &mut GasRecorder
     ) -> ExecutionResult {
         // TODO should be kept as U256 as maybe the gas input is high enough for this?
         // println!("Read from {:x}", read_address);
-        if write_address.checked_add(length).is_none()
-        {
+        if write_address.checked_add(length).is_none() {
             // println!("Checked add failed");
             gas_recorder.record_gas_usage(gas_recorder.gas_input as u64);
             return ExecutionResult::Error(ExecutionError::InsufficientGas);
@@ -153,8 +157,8 @@ impl Memory {
         //     .copy_from_slice(&bytes[start_address..end_address]);
         // unsafe  {
 
-            // let destination = bytes.as_ptr() + read_address.as_usize();
-            // copy_bytes_with_padding(self.bytes.as_mut_ptr() + read_address, , length);
+        // let destination = bytes.as_ptr() + read_address.as_usize();
+        // copy_bytes_with_padding(self.bytes.as_mut_ptr() + read_address, , length);
         // }
         let read_address = if read_address > (std::usize::MAX - length).into() {
             std::usize::MAX - length
@@ -198,7 +202,7 @@ impl Memory {
     pub fn read_u256(
         &mut self,
         address: usize,
-        gas_recorder: &mut GasRecorder,
+        gas_recorder: &mut GasRecorder
     ) -> (ExecutionResult, U256) {
         // TODO add memory expansion cost?
         if self.bytes.len() < 32 || address > self.bytes.len() - 32 {
@@ -216,7 +220,7 @@ impl Memory {
         &mut self,
         address: usize,
         value: U256,
-        gas_recorder: &mut GasRecorder,
+        gas_recorder: &mut GasRecorder
     ) -> ExecutionResult {
         if address >= self.bytes.len().max(32) - 32 {
             return_if_error!(self.expand(address + 32, Some(gas_recorder)));
@@ -232,9 +236,9 @@ impl Memory {
         &mut self,
         address: usize,
         value: u8,
-        gas_recorder: &mut GasRecorder,
+        gas_recorder: &mut GasRecorder
     ) -> ExecutionResult {
-        if address >= self.bytes.len().max(1) - 1{
+        if address >= self.bytes.len().max(1) - 1 {
             return_if_error!(self.expand(address + 1, Some(gas_recorder)));
         }
         self.bytes[address] = value;
@@ -246,22 +250,22 @@ impl Memory {
         &mut self,
         address: usize,
         length: usize,
-        gas_recorder: &mut GasRecorder,
+        gas_recorder: &mut GasRecorder
     ) -> (ExecutionResult, Vec<u8>) {
-        if self.bytes.len() < length || address >  self.bytes.len().max(length) - length {
+        if length == 0 {
+            return (ExecutionResult::InProgress, vec![]);
+        }
+        if self.bytes.len() < length || address > self.bytes.len().max(length) - length {
             return_tuple_if_error!(self.expand(address + length, Some(gas_recorder)), vec![]);
         }
-        (
-            ExecutionResult::InProgress,
-            self.bytes[address..(address + length)].to_vec(),
-        )
+        (ExecutionResult::InProgress, self.bytes[address..address + length].to_vec())
     }
 
     #[inline]
     pub fn expand(
         &mut self,
         new_length: usize,
-        gas_recorder: Option<&mut GasRecorder>,
+        gas_recorder: Option<&mut GasRecorder>
     ) -> ExecutionResult {
         if new_length <= self.bytes.len() {
             return ExecutionResult::InProgress;

@@ -451,6 +451,9 @@ pub fn decode_instruction(
             let (dest_offset, offset, size) = (pop_usize!(evm), pop!(evm), pop_usize!(evm));
             evm.gas_recorder.record_gas_usage((DynamicCosts::Copy { size_bytes: size }).cost());
 
+            return_if_error!(
+                evm.memory.expand(dest_offset + size, Some(&mut evm.gas_recorder))
+            );
             if offset < evm.program.bytes.len().into() {
                 let offset = offset.as_usize();
                 let size = (size).min(evm.program.bytes.len() - offset);
@@ -881,18 +884,20 @@ pub fn decode_instruction(
         opcodes::SELFDESTRUCT => {
             let address = pop!(evm);
             let address_exists =
-                runtime.exists(address) || runtime.balance(evm.contract_address).is_zero();
-            let is_cold = if address_exists { runtime.is_cold(address) } else { false };
+                runtime.exists(address);
+            let is_cold = runtime.is_cold(address);
             evm.gas_recorder.record_gas_usage(
                 (DynamicCosts::SelfDestruct {
                     address_exists: address_exists,
                     is_cold: is_cold,
+                    positive_balance: !evm.message.value.is_zero(),
                 }).cost()
             );
             evm.gas_recorder.record_refund(
                 (DynamicCosts::SelfDestruct {
                     address_exists: address_exists,
                     is_cold: is_cold,
+                    positive_balance: !evm.message.value.is_zero(),
                 }).refund()
             );
             return_if_error!(evm.check_gas_usage());

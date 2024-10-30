@@ -13,6 +13,9 @@ pub struct GasRecorder {
 impl GasRecorder {
 
     pub fn usage_with_refunds(&self) -> usize {
+        println!("Gas usage: {:x}", self.gas_usage);
+        println!("Gas refunds: {:x}", self.gas_refunds);
+
         self.gas_usage - self.gas_refunds.min(self.gas_usage / 2)
     }
 
@@ -25,7 +28,7 @@ impl GasRecorder {
     }
     // TODO unit test
     pub fn is_valid_with_refunds(&self) -> bool {
-        (self.gas_usage - self.gas_refunds.min(self.gas_usage / 5)) <= self.gas_input
+        (self.gas_usage - self.gas_refunds.min(self.gas_usage / 2)) <= self.gas_input
     }
 
     pub fn record_gas_usage(&mut self, gas: u64) {
@@ -38,6 +41,8 @@ impl GasRecorder {
 
     // TODO unit test
     pub fn record_memory_gas_usage(&mut self, current_memory_size: usize, new_memory_size: usize) {
+        println!("Current memory size: {:x}", current_memory_size);
+        println!("New memory size: {:x}", new_memory_size);
         if new_memory_size == 0 || current_memory_size >= new_memory_size {
             return;
         }
@@ -48,7 +53,7 @@ impl GasRecorder {
             self.gas_usage = u64::MAX as usize;
             return;
         }
-        // println!("Memory expansion cost: {:x}", memory_expansion_cost);
+        println!("Memory expansion cost: {:x}", memory_expansion_cost);
         self.gas_usage += memory_expansion_cost;
     }
 
@@ -64,6 +69,9 @@ impl GasRecorder {
                 self.gas_usage += other.gas_usage;
             }
             ExecutionResult::Success(_) => {
+                println!("Success");
+                println!("Gas usage: {:x}", other.gas_usage);
+                println!("Gas refunds: {:x}", other.gas_refunds);
                 self.gas_usage += other.gas_usage;
                 self.gas_refunds += other.gas_refunds;
             }

@@ -61,7 +61,6 @@ pub fn call(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool) -> Ex
         }
         .cost(),
     );
-    println!("Gas reamining {:x}", evm.gas_input - evm.gas_recorder.gas_usage as u64);
     // if evm.gas_recorder.gas_input > evm.gas_recorder.gas_usage {
     //     println!(
     //         "Gas usage {:x}",
@@ -101,7 +100,7 @@ pub fn call_code(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool) 
     //     evm.gas_recorder.record_gas_usage(evm.gas_recorder.gas_input as u64);
     //     return ExecutionResult::Error(ExecutionError::InvalidAddress);
     // }
-    let call_args = CallArgs {
+    let mut call_args = CallArgs {
         gas: gas,
         code_address: address,
         contract_address: evm.contract_address,
@@ -112,6 +111,7 @@ pub fn call_code(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool) 
         ret_offset: ret_offset,
         ret_size: ret_size,
     };
+
     evm.gas_recorder.record_gas_usage(
         DynamicCosts::Call {
             value: value,
@@ -125,6 +125,10 @@ pub fn call_code(evm: &mut EVMContext, runtime: &mut impl Runtime, debug: bool) 
         }
         .cost(),
     );
+
+    if call_args.value != ZERO {
+        call_args.gas += G_CALL_STIPEND;
+    }
     return_if_gas_too_high!(evm.gas_recorder);
     match make_call(evm, runtime, debug, call_args, false) {
         ExecutionResult::Error(_) => {
@@ -270,7 +274,7 @@ pub fn make_call(
     args: CallArgs,
     is_static: bool,
 ) -> ExecutionResult {
-    println!("Making call");
+    // println!("Making call");
     let code = match runtime.exists(args.code_address) {
         true => runtime.code(args.code_address),
         false => {
@@ -281,31 +285,35 @@ pub fn make_call(
     if !runtime.exists(args.code_address) {
         return ExecutionResult::Success(ExecutionSuccess::RevertedTransaction);
     }
-    println!("Code found");
-    println!("gas: {:x}", args.gas);
+    // println!("Gas reamining {:x}", evm.gas_input - evm.gas_recorder.gas_usage as u64);
+    if args.args_offset + args.args_size > evm.memory.len() {
+        return_if_error!(evm.memory.expand(args.args_offset + args.args_size, Some(&mut evm.gas_recorder)));
+    }
+    if args.ret_offset + args.ret_size > evm.memory.len() {
+        return_if_error!(evm.memory.expand(args.ret_offset + args.ret_size, Some(&mut evm.gas_recorder)));
+    }
+    // println!("Gas reamining {:x}", evm.gas_input - evm.gas_recorder.gas_usage as u64);
+
+    // println!("Code found");
+    // println!("gas: {:x}", args.gas);
 
     // let code: Vec<u8> = runtime.code(args.code_address);
     let mut gas = args
         .gas
         .min(((evm.gas_input - evm.gas_recorder.gas_usage.clone() as u64) * 63).div_ceil(64));
-    if args.value != ZERO {
-        gas += G_CALL_STIPEND;
-    }
-    println!("args.offset: {:x}", args.args_offset);
-    println!("args.size: {:x}", args.args_size);
-    println!("args.ret: {:x}", args.ret_offset);
-    println!("args.ret size: {:x}", args.ret_size);
-    println!("value: {:x}", args.value);
-    println!("gas: {:x}", gas);
+
+    // println!("args.offset: {:x}", args.args_offset);
+    // println!("args.size: {:x}", args.args_size);
+    // println!("args.ret: {:x}", args.ret_offset);
+    // println!("args.ret size: {:x}", args.ret_size);
+    // println!("value: {:x}", args.value);
+    // println!("gas: {:x}", gas);
     if args.args_offset.checked_add(args.args_size).is_none()
     {
         evm.gas_recorder
             .record_gas_usage(evm.gas_recorder.gas_input as u64);
-        println!("Invalid args size");
+        // println!("Invalid args size");
         return ExecutionResult::Error(ExecutionError::InvalidMemSize);
-    }
-    if args.args_offset + args.args_size > evm.memory.len() {
-        return_if_error!(evm.memory.expand(args.args_offset + args.args_size, Some(&mut evm.gas_recorder)));
     }
     let mut sub_evm = EVMContext::create_sub_context(
         args.contract_address,
@@ -322,15 +330,20 @@ pub fn make_call(
         is_static,
     );
     if runtime.balance(evm.contract_address) < args.value {
+        // TODO should this be here ????
+        // println!("Insufficient balance");
+        // println!("Balance: {:x}", runtime.balance(evm.contract_address));
+        // println!("Value: {:x}", args.value);
         evm.gas_recorder.record_gas_usage(evm.gas_recorder.gas_input as u64);
         return ExecutionResult::Error(ExecutionError::InsufficientBalance);
     }
     runtime.add_context();
     runtime.withdrawal(evm.contract_address, args.value);
     runtime.deposit(sub_evm.contract_address, args.value);
-    println!("Executing");
+    // println!("Executing");
     let execution_result = sub_evm.execute_program(runtime, debug);
-    println!("Execution result: {:?}", execution_result);
+    println!("run");
+    // println!("Execution result: {:?}", execution_result);
     match &execution_result {
         ExecutionResult::Error(error) => {
             runtime.revert_context();

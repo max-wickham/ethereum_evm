@@ -51,9 +51,9 @@ fn generate_tests_from_file(file_path: &str) -> Vec<proc_macro2::TokenStream> {
         serde_json::from_reader(BufReader::new(File::open(file_path).unwrap())).unwrap();
     let clean_file_path = clean_path(file_path);
     for (index, test) in parsed_tests.iter().nth(0).unwrap().1.tests().iter().enumerate() {
-        if index != 1 {
-            continue;
-        }
+        // if index != 0 {
+        //     continue;
+        // }
         let test_name = Ident::new(
             &(clean_file_path.clone() + &index.to_string()),
             proc_macro2::Span::call_site(),
@@ -66,7 +66,7 @@ fn generate_tests_from_file(file_path: &str) -> Vec<proc_macro2::TokenStream> {
                 let test_string = #test_str;
                 // let test_string: str = #test_str;
                 let test: TestState = serde_json::from_str(test_string).unwrap();
-                run_test(&test, true);
+                run_test(&test, false);
             }
         });
     }

@@ -19,7 +19,8 @@ impl Stack {
     }
 
     #[inline]
-    pub fn push(&mut self, value: U256) -> Result<(),()> {
+    pub fn push(&mut self, value:
+        U256) -> Result<(),()> {
         if self.stack_pointer + 1 == STACK_SIZE {
             return Err(());
         }
