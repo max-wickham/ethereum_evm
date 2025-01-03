@@ -1,4 +1,4 @@
-workspace = { members = [ "official_test_types","util"] }
+workspace = { members = ["official_test_types", "util"] }
 [package]
 name = "ethereum_evm"
 version = "0.1.0"
@@ -22,8 +22,12 @@ sha3 = "0.10.8"
 thiserror = "1.0.58"
 num256 = "0.5.1"
 lazy_static = "1.4.0"
-phf = {version = "0.11.2", features = ["macros"]}
+phf = { version = "0.11.2", features = ["macros"] }
 quote = "1.0.35"
+secp256k1 = { version = "0.30", features = ["recovery"] }
+keccak-hash = "0.11.0"
+sha2 = "0.10.8"
+hex-literal = "0.3"
 
 [profile.dev]
-opt-level = 3               # Use slightly better optimizations.
+opt-level = 3 # Use slightly better optimizations.

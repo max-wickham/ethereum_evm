@@ -1,8 +1,8 @@
 use ethereum_evm::runtime::Runtime;
-use ethereum_evm::util::{h256_to_u256, keccak256, u256_to_h256};
+use ethereum_evm::util::{ h256_to_u256, keccak256, u256_to_h256 };
 use hex::encode;
-use primitive_types::{H160, H256, U256};
-use rlp::{Encodable, RlpStream};
+use primitive_types::{ H160, H256, U256 };
+use rlp::{ Encodable, RlpStream };
 use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::mem;
@@ -82,38 +82,44 @@ impl Encodable for RLPContract {
 
 impl MockRuntime {
     pub fn state_root_hash(&self) -> H256 {
-        let tree: Vec<(_, _)> = self
-            .contracts
+        let tree: Vec<(_, _)> = self.contracts
             .iter()
             .map(|(address, contract)| {
-                (H160::from(u256_to_h256(*address)), {
-                    println!("");
-                    println!("address: {:x}", address);
-                    println!("storage: {:?}", contract.storage);
-                    let encoded_contract = rlp::encode(&RLPContract {
-                        storage_root_hash: ethereum::util::sec_trie_root(
-                            contract
-                                .storage
-                                .iter()
-                                .filter(|(_, value)| **value != H256::zero())
-                                .map(|(key, value)| (key, rlp::encode(&h256_to_u256(*value)))),
-                        ),
-                        code_hash: keccak256(&contract.code),
-                        nonce: contract.nonce,
-                        balance: contract.balance,
-                        code_version: U256::zero(),
-                    });
-                    println!(
-                        "encoded_contract: {:x?}",
-                        encode(keccak256(&encoded_contract.to_vec()))
-                    );
-                    encoded_contract
-                })
+                (
+                    H160::from(u256_to_h256(*address)),
+                    {
+                        println!("");
+                        println!("address: {:x}", address);
+                        println!("storage: {:?}", contract.storage);
+                        let encoded_contract = rlp::encode(
+                            &(RLPContract {
+                                storage_root_hash: ethereum::util::sec_trie_root(
+                                    contract.storage
+                                        .iter()
+                                        .filter(|(_, value)| **value != H256::zero())
+                                        .map(|(key, value)| (
+                                            key,
+                                            rlp::encode(&h256_to_u256(*value)),
+                                        ))
+                                ),
+                                code_hash: keccak256(&contract.code),
+                                nonce: contract.nonce,
+                                balance: contract.balance,
+                                code_version: U256::zero(),
+                            })
+                        );
+                        // println!(
+                        //     "encoded_contract: {:x?}",
+                        //     encode(keccak256(&encoded_contract.to_vec()))
+                        // );
+                        encoded_contract
+                    },
+                )
             })
             .collect::<Vec<_>>();
         // println!("tree: {:x?}", &tree);
         let x = ethereum::util::sec_trie_root(tree);
-        println!("state_root_hash: {:x?}", x);
+        // println!("state_root_hash: {:x?}", x);
         x
     }
 }
@@ -175,29 +181,20 @@ impl Runtime for MockRuntime {
         self.current_context.as_ref().unwrap().contracts[&address].nonce
     }
     fn code(&self, address: U256) -> Vec<u8> {
-        self.current_context.as_ref().unwrap().contracts[&address]
-            .code
-            .clone()
+        self.current_context.as_ref().unwrap().contracts[&address].code.clone()
     }
     fn exists(&self, address: U256) -> bool {
-        self.current_context
-            .as_ref()
-            .unwrap()
-            .contracts
-            .contains_key(&address)
+        self.current_context.as_ref().unwrap().contracts.contains_key(&address)
     }
 
     fn read_original_storage(&self, address: U256, index: U256) -> H256 {
-        self.contracts[&address]
-            .storage
-            .get(&u256_to_h256(index))
-            .unwrap_or(&H256::zero())
-            .clone()
+        self.contracts[&address].storage.get(&u256_to_h256(index)).unwrap_or(&H256::zero()).clone()
     }
     fn read_storage(&self, address: U256, index: U256) -> H256 {
-        self.current_context.as_ref().unwrap().contracts[&address]
-            .storage
-            .get(&u256_to_h256(index))
+        self.current_context
+            .as_ref()
+            .unwrap()
+            .contracts[&address].storage.get(&u256_to_h256(index))
             .unwrap_or(&H256::zero())
             .clone()
     }
@@ -214,38 +211,38 @@ impl Runtime for MockRuntime {
         self.current_context.as_ref().unwrap().contracts[&address].is_cold
     }
     fn is_cold_index(&self, address: U256, index: U256) -> bool {
-        !self.current_context.as_ref().unwrap().contracts[&address]
-            .hot_keys
-            .contains(&index)
+        !self.current_context.as_ref().unwrap().contracts[&address].hot_keys.contains(&index)
     }
     fn mark_hot(&mut self, address: U256) {
-        self.current_context
-            .as_mut()
-            .unwrap()
-            .contracts
-            .get_mut(&address)
-            .unwrap()
-            .is_cold = false;
+        if !self.current_context.as_mut().unwrap().contracts.contains_key(&address) {
+            return;
+        }
+        self.current_context.as_mut().unwrap().contracts.get_mut(&address).unwrap().is_cold = false;
     }
     fn mark_hot_index(&mut self, address: U256, index: U256) {
         self.current_context
             .as_mut()
             .unwrap()
-            .contracts
-            .get_mut(&address)
+            .contracts.get_mut(&address)
             .unwrap()
-            .hot_keys
-            .insert(index);
+            .hot_keys.insert(index);
     }
     fn set_storage(&mut self, address: U256, index: U256, value: H256) {
+        if value == H256::zero() {
+            self.current_context
+                .as_mut()
+                .unwrap()
+                .contracts.get_mut(&address)
+                .unwrap()
+                .storage.remove(&u256_to_h256(index));
+            return;
+        }
         self.current_context
             .as_mut()
             .unwrap()
-            .contracts
-            .get_mut(&address)
+            .contracts.get_mut(&address)
             .unwrap()
-            .storage
-            .insert(u256_to_h256(index), value);
+            .storage.insert(u256_to_h256(index), value);
         // for (address, contract) in &self.current_context.as_ref().unwrap().contracts {
         // println!("Storage: {:?}", contract.storage);
         // }
@@ -254,82 +251,36 @@ impl Runtime for MockRuntime {
         self.current_context
             .as_mut()
             .unwrap()
-            .contracts
-            .get_mut(&address)
-            .unwrap()
-            .is_deleted = true;
+            .contracts.get_mut(&address)
+            .unwrap().is_deleted = true;
     }
     fn reset_storage(&mut self, address: U256) {
-        self.current_context
-            .as_mut()
-            .unwrap()
-            .contracts
-            .get_mut(&address)
-            .unwrap()
-            .storage = BTreeMap::new();
+        self.current_context.as_mut().unwrap().contracts.get_mut(&address).unwrap().storage =
+            BTreeMap::new();
     }
     fn set_code(&mut self, address: U256, code: Vec<u8>) {
-        self.current_context
-            .as_mut()
-            .unwrap()
-            .contracts
-            .get_mut(&address)
-            .unwrap()
-            .code = code;
+        self.current_context.as_mut().unwrap().contracts.get_mut(&address).unwrap().code = code;
     }
     fn reset_balance(&mut self, address: U256) {
-        self.current_context
-            .as_mut()
-            .unwrap()
-            .contracts
-            .get_mut(&address)
-            .unwrap()
-            .balance = U256::from(0 as u64);
+        self.current_context.as_mut().unwrap().contracts.get_mut(&address).unwrap().balance =
+            U256::from(0 as u64);
     }
     fn deposit(&mut self, target: U256, value: U256) {
-        if !self
-            .current_context
-            .as_ref()
-            .unwrap()
-            .contracts
-            .contains_key(&target)
-        {
+        if !self.current_context.as_ref().unwrap().contracts.contains_key(&target) {
             self.create_contract(target, vec![]);
         }
-        self.current_context
-            .as_mut()
-            .unwrap()
-            .contracts
-            .get_mut(&target)
-            .unwrap()
-            .balance += value;
+        self.current_context.as_mut().unwrap().contracts.get_mut(&target).unwrap().balance += value;
     }
     fn withdrawal(&mut self, source: U256, value: U256) {
-        println!(
-            "Withdrawal: {:?}",
-            self.current_context.as_ref().unwrap().contracts[&source].balance
-        );
-        self.current_context
-            .as_mut()
-            .unwrap()
-            .contracts
-            .get_mut(&source)
-            .unwrap()
-            .balance -= value;
-        println!("Withdrawal: {:?}", self.balance(source));
+        self.current_context.as_mut().unwrap().contracts.get_mut(&source).unwrap().balance -= value;
     }
     fn increase_nonce(&mut self, address: U256) {
-        self.current_context
-            .as_mut()
-            .unwrap()
-            .contracts
-            .get_mut(&address)
-            .unwrap()
-            .nonce += U256::from(1);
+        self.current_context.as_mut().unwrap().contracts.get_mut(&address).unwrap().nonce +=
+            U256::from(1);
     }
 
     fn create_contract(&mut self, address: U256, code: Vec<u8>) {
-        println!("Created1: {:?}", address);
+        println!("Creating Contract");
         let contract = Contract {
             balance: U256::from(0 as u64),
             code_size: U256::from(code.len() as u64),
@@ -341,7 +292,6 @@ impl Runtime for MockRuntime {
             is_cold: false,
             hot_keys: HashSet::new(),
         };
-        println!("Created2: {:?}", address);
         match &mut self.current_context {
             Some(context) => {
                 context.as_mut().contracts.insert(address, contract);
@@ -365,16 +315,20 @@ impl Runtime for MockRuntime {
         // Could be slightly faster with a swap perhaps
         match mem::take(&mut self.current_context) {
             Some(context) => {
-                self.current_context = Some(Box::new(Context {
-                    contracts: context.contracts.clone(),
-                    prev_context: Some(context),
-                }));
+                self.current_context = Some(
+                    Box::new(Context {
+                        contracts: context.contracts.clone(),
+                        prev_context: Some(context),
+                    })
+                );
             }
             None => {
-                self.current_context = Some(Box::new(Context {
-                    contracts: self.contracts.clone(),
-                    prev_context: None,
-                }));
+                self.current_context = Some(
+                    Box::new(Context {
+                        contracts: self.contracts.clone(),
+                        prev_context: None,
+                    })
+                );
             }
         };
     }
@@ -424,10 +378,6 @@ impl Runtime for MockRuntime {
 
 impl MockRuntime {
     fn delete_contract(&mut self, address: &U256) {
-        self.current_context
-            .as_mut()
-            .unwrap()
-            .contracts
-            .remove(&address);
+        self.current_context.as_mut().unwrap().contracts.remove(&address);
     }
 }

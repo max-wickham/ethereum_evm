@@ -25,7 +25,6 @@ use crate::evm_logic::util::{
     MAX_UINT256,
     MAX_UINT256_COMPLEMENT,
     ZERO,
-    ZERO_H256,
 };
 use crate::result::{ ExecutionError, ExecutionResult, ExecutionSuccess };
 use crate::runtime::Runtime;
@@ -33,7 +32,6 @@ use crate::util::u512_to_u256_checked;
 
 use num256::Uint256;
 use primitive_types::{ U256, U512 };
-use std::io::Read;
 use std::ops::{ Not, Rem, Shl, Shr };
 use std::u64;
 
@@ -58,6 +56,7 @@ pub fn decode_instruction(
     let opcode: u8 = evm.program[evm.program_counter];
 
     // Print the execution data
+    // TODO use logs?
     if debug {
         print!("{}", "\t".repeat(evm.nested_index as usize));
         println!(
@@ -68,7 +67,7 @@ pub fn decode_instruction(
         );
     }
 
-    // Flag to not increment the program counter and the end of the loop
+    // Flag to not increment the program counter and the end of the loop (due to a jump)
     let mut jump_flag = false;
 
     match opcode {
@@ -169,7 +168,7 @@ pub fn decode_instruction(
                     push!(evm, U256::zero());
                 }
                 _ => {
-                    // c is ensured not to be zero
+                    // c is guaranteed not zero
                     let result = u512_to_u256_checked(
                         U512::from(a.checked_rem(c).unwrap())
                             .checked_add(b.checked_rem(c).unwrap().into())
@@ -178,16 +177,7 @@ pub fn decode_instruction(
                             .unwrap()
                     );
 
-                    push!(
-                        evm,
-                        result
-                        // a
-                        //     .checked_rem(c)
-                        //     .unwrap()
-                        //     .(b.checked_rem(c).unwrap())
-                        //     .0.checked_rem(c)
-                        //     .unwrap()
-                    );
+                    push!(evm, result);
                 }
             }
             evm.gas_recorder.record_gas_usage(static_costs::G_MID);
@@ -451,12 +441,10 @@ pub fn decode_instruction(
             let (dest_offset, offset, size) = (pop_usize!(evm), pop!(evm), pop_usize!(evm));
             evm.gas_recorder.record_gas_usage((DynamicCosts::Copy { size_bytes: size }).cost());
 
-            return_if_error!(
-                evm.memory.expand(dest_offset + size, Some(&mut evm.gas_recorder))
-            );
+            return_if_error!(evm.memory.expand(dest_offset + size, Some(&mut evm.gas_recorder)));
             if offset < evm.program.bytes.len().into() {
                 let offset = offset.as_usize();
-                let size = (size).min(evm.program.bytes.len() - offset);
+                let size = size.min(evm.program.bytes.len() - offset);
                 return_if_gas_too_high!(evm.gas_recorder);
 
                 return_if_error!(
@@ -719,11 +707,10 @@ pub fn decode_instruction(
             // Would technically be slightly faster without this (branch for each case) but probably a negligible difference
             let push_number = (opcode - opcodes::PUSH_1 + 1) as usize;
 
-            let start_index = (evm.program_counter + 1).min(evm.program.len()-1);
+            let start_index = (evm.program_counter + 1).min(evm.program.len() - 1);
             let end_index = (push_number + evm.program_counter + 1).min(evm.program.len());
 
-            let mut bytes =
-                evm.program.bytes[start_index..end_index].to_vec();
+            let mut bytes = evm.program.bytes[start_index..end_index].to_vec();
             if end_index - start_index != push_number {
                 bytes.append(vec![0; push_number - (end_index - start_index)].as_mut());
             }
@@ -883,28 +870,50 @@ pub fn decode_instruction(
 
         opcodes::SELFDESTRUCT => {
             let address = pop!(evm);
-            let address_exists =
-                runtime.exists(address);
+            let address_exists = runtime.exists(address);
             let is_cold = runtime.is_cold(address);
+            let balance = runtime.balance(evm.contract_address);
+            println!("Is cold {:?}", is_cold);
+            println!("Exists {:?}", address_exists);
+            println!("Positive Balance {:?}", balance.is_zero());
+            println!("Receiving Balance {:?}", runtime.balance(address));
+            println!("Address {:?}", address);
             evm.gas_recorder.record_gas_usage(
                 (DynamicCosts::SelfDestruct {
                     address_exists: address_exists,
                     is_cold: is_cold,
-                    positive_balance: !evm.message.value.is_zero(),
+                    positive_balance: !balance.is_zero(),
+                }).cost()
+            );
+            println!(
+                "Gas cost {:?}",
+                (DynamicCosts::SelfDestruct {
+                    address_exists: address_exists,
+                    is_cold: is_cold,
+                    positive_balance: !balance.is_zero(),
                 }).cost()
             );
             evm.gas_recorder.record_refund(
                 (DynamicCosts::SelfDestruct {
                     address_exists: address_exists,
                     is_cold: is_cold,
-                    positive_balance: !evm.message.value.is_zero(),
+                    positive_balance: !balance.is_zero(),
                 }).refund()
             );
+            println!(
+                "Gas cost {:?}",
+                (DynamicCosts::SelfDestruct {
+                    address_exists: address_exists,
+                    is_cold: is_cold,
+                    positive_balance: !balance.is_zero(),
+                }).refund()
+            );
+            println!("Self Destruct");
             return_if_error!(evm.check_gas_usage());
-            let balance = runtime.balance(evm.contract_address);
             runtime.withdrawal(evm.contract_address, balance);
             runtime.deposit(address, balance);
             runtime.mark_delete(evm.contract_address);
+            println!("Self Destruct");
             return ExecutionResult::Success(ExecutionSuccess::Stop);
         }
 
@@ -913,7 +922,6 @@ pub fn decode_instruction(
         }
     }
 
-    // return_if_error!(evm.program_counter > 1000000 || evm.nested_index > 1024);
     return_if_error!(evm.check_gas_usage());
     if !jump_flag {
         evm.program_counter += 1;
@@ -950,4 +958,22 @@ pub fn calculate_jump_dests(evm: &mut EVMContext) -> Vec<usize> {
         pc += 1;
     }
     jump_dests
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // #[test]
+    // fn test_ecrecover_zero() {
+    //     // Quick check: invalid v => zero
+    //     let hash = U256::from(0x1234);
+    //     let v = U256::from(99); // invalid
+    //     let r = U256::zero();
+    //     let s = U256::zero();
+    //     let recovered = ecrecover(hash, v, r, s);
+    //     assert_eq!(recovered, U256::zero());
+    // }
+
+    // Create tests for all the arithmetic cases
 }

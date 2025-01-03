@@ -1,29 +1,26 @@
-use std::{ops::Not, str::FromStr};
+use std::{ ops::Not, str::FromStr };
 
 use lazy_static::lazy_static;
-use num256::{Int256, Uint256};
-use primitive_types::{H256, U256, U512};
-use sha3::{Digest, Keccak256};
+use num256::{ Int256, Uint256 };
+use primitive_types::{ H256, U256, U512 };
+use sha3::{ Digest, Keccak256 };
 
 pub const ZERO: U256 = U256::zero();
 lazy_static! {
     pub static ref MAX_UINT256_COMPLEMENT: Uint256 = Uint256::from_str(
         "57896044618658097711785492504343953926634992332820282019728792003956564819968"
-    )
-    .unwrap();
+    ).unwrap();
     pub static ref MAX_UINT256: Uint256 = Uint256::from_str(
         "115792089237316195423570985008687907853269984665640564039457584007913129639935"
-    )
-    .unwrap();
+    ).unwrap();
     pub static ref MIN_INT256: Int256 = Int256::from_str(
         "-57896044618658097711785492504343953926634992332820282019728792003956564819968"
-    )
-    .unwrap();
+    ).unwrap();
     pub static ref ZERO_H256: H256 = u256_to_h256(U256::zero());
 }
 
 pub fn var_array_to_fixed_array(bytes: &[u8]) -> [u8; 32] {
-    let result: Result<[u8; 32], _> =  bytes.try_into();
+    let result: Result<[u8; 32], _> = bytes.try_into();
     match result {
         Ok(r) => r,
         Err(_) => {
@@ -96,7 +93,6 @@ pub fn int256_to_uint256(v: Int256) -> Uint256 {
         v.to_uint256().unwrap()
     }
 }
-
 
 pub fn u512_to_u256_checked(x: U512) -> U256 {
     let mut bytes = [0u8; 64];

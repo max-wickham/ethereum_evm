@@ -5,53 +5,48 @@ use ethereum_evm::{
     execute_transaction,
     result::ExecutionResult,
     runtime::Runtime,
-    util::{keccak256, u256_to_h256},
+    util::{ keccak256, u256_to_h256 },
 };
 use primitive_types::U256;
 use serde_json::json;
 use serde_json::value::Value;
-use std::{
-    collections::{BTreeMap, HashSet},
-    fs::File,
-    io::BufReader,
-};
+use std::{ collections::{ BTreeMap, HashSet }, fs::File, io::BufReader };
 use test_gen::generate_official_tests;
 
-use crate::mocks::mock_runtime::{Contract, MockRuntime};
+use crate::mocks::mock_runtime::{ Contract, MockRuntime };
 
-use official_test_types::types::{TestState, TestStateMulti};
+use official_test_types::types::{ TestState, TestStateMulti };
 
+// generate_official_tests!("./tests/official_tests/tests/GeneralStateTests/VMTests");
+
+// generate_official_tests!("./tests/official_tests/tests/GeneralStateTests/stShift");
+// generate_official_tests!("./tests/official_tests/tests/GeneralStateTests/stSLoadTest");
+// generate_official_tests!("./tests/official_tests/tests/GeneralStateTests/stSStoreTest");
+// generate_official_tests!("./tests/official_tests/tests/GeneralStateTests/stStackTests");
+generate_official_tests!("./tests/official_tests/tests/GeneralStateTests/stPreCompiledContracts2");
+// generate_official_tests!("./tests/official_tests/tests/GeneralStateTests/stStaticCall");
+
+// generate_official_tests!("./tests/official_tests/tests/GeneralStateTests/VMTests");
 // generate_official_tests!(
-//     "./tests/official_tests/tests/GeneralStateTests/VMTests/vmBitwiseLogicOperation"
+//     "./tests/official_tests/tests/GeneralStateTests/VMTests/vmIOandFlowOperations/jumpToPush.json"
 // );
 
 // generate_official_tests!(
-//     "./tests/official_tests/tests/GeneralStateTests/VMTests/vmIOandFlowOperations"
+// "./tests/official_tests/tests/GeneralStateTests/VMTests/vmTests/suicide.json"
 // );
+
 // generate_official_tests!(
 //     "./tests/official_tests/tests/ABITests"
 // );
-generate_official_tests!(
-    "./tests/official_tests/tests/GeneralStateTests/stZeroKnowledge"
-);
+// generate_official_tests!("./tests/official_tests/tests/GeneralStateTests/stZeroKnowledge2");
 // generate_official_tests!("./tests/official_tests/tests/GeneralStateTests/VMTests/vmTests/suicide.json");
 
 pub fn run_test_file(filename: String, debug: bool, index: usize) {
-    let tests: BTreeMap<String, TestStateMulti> =
-        serde_json::from_reader(BufReader::new(File::open(filename).unwrap())).unwrap();
-    println!("Debug: {:?}", debug);
-    run_test(
-        &tests
-            .into_iter()
-            .nth(0)
-            .unwrap()
-            .1
-            .tests()
-            .into_iter()
-            .nth(index)
-            .unwrap(),
-        debug,
-    );
+    let tests: BTreeMap<String, TestStateMulti> = serde_json
+        ::from_reader(BufReader::new(File::open(filename).unwrap()))
+        .unwrap();
+    // println!("Debug: {:?}", debug);
+    run_test(&tests.into_iter().nth(0).unwrap().1.tests().into_iter().nth(index).unwrap(), debug);
 }
 
 pub fn run_test(test: &TestState, debug: bool) {
@@ -69,42 +64,40 @@ pub fn run_test(test: &TestState, debug: bool) {
         contracts: {
             let mut contracts = BTreeMap::new();
             for (address, contract) in &test.pre {
-                contracts.insert(
-                    *address,
-                    Contract {
-                        balance: contract.balance(),
-                        code_size: U256::from(contract.code.0.len() as u64),
-                        code_hash: keccak256(&contract.code.0),
-                        code: contract.code.0.clone(),
-                        nonce: contract.nonce(),
-                        storage: contract.storage().clone(),
-                        is_deleted: false,
-                        is_cold: true,
-                        hot_keys: HashSet::new(),
-                    },
-                );
-                println!("Storage: {:?}", contract.storage().clone());
-            }
-            contracts.insert(
-                test.env.current_coinbase,
-                Contract {
-                    balance: U256::zero(),
-                    code_size: U256::zero(),
-                    code_hash: u256_to_h256(U256::zero()),
-                    code: vec![],
-                    nonce: U256::zero(),
-                    storage: BTreeMap::new(),
+                contracts.insert(*address, Contract {
+                    balance: contract.balance(),
+                    code_size: U256::from(contract.code.0.len() as u64),
+                    code_hash: keccak256(&contract.code.0),
+                    code: contract.code.0.clone(),
+                    nonce: contract.nonce(),
+                    storage: contract.storage().clone(),
                     is_deleted: false,
                     is_cold: true,
                     hot_keys: HashSet::new(),
-                },
-            );
+                });
+                if debug {
+                    println!("Storage: {:?}", contract.storage().clone());
+                }
+            }
+            contracts.insert(test.env.current_coinbase, Contract {
+                balance: U256::zero(),
+                code_size: U256::zero(),
+                code_hash: u256_to_h256(U256::zero()),
+                code: vec![],
+                nonce: U256::zero(),
+                storage: BTreeMap::new(),
+                is_deleted: false,
+                is_cold: true,
+                hot_keys: HashSet::new(),
+            });
             contracts
         },
         current_context: None,
     };
     runtime.add_context();
-    println!("Message data size : {}", test.transaction.data.len());
+    if debug {
+        println!("Message data size : {}", test.transaction.data.len());
+    }
     // Execute the transaction
     let (result, gas_usage) = execute_transaction(
         &mut runtime,
@@ -114,12 +107,11 @@ pub fn run_test(test: &TestState, debug: bool) {
         test.transaction.gas_price.unwrap_or_default(),
         test.transaction.value,
         &test.transaction.data,
-        debug,
+        debug
     );
 
     // Calculate the gas usage
-    let eth_usage = (gas_usage) * test.transaction.gas_price.unwrap_or_default().as_usize();
-    println!("Debug: {:?}", debug);
+    let eth_usage = gas_usage * test.transaction.gas_price.unwrap_or_default().as_usize();
     if debug {
         println!("Gas Usage: {}", gas_usage);
         println!("Eth Usage: {}", eth_usage);
@@ -139,16 +131,15 @@ pub fn run_test(test: &TestState, debug: bool) {
     // runtime.withdrawal(test.transaction.sender, U256::from(eth_usage as u64));
     // runtime.deposit(test.env.current_coinbase, U256::from(eth_usage as u64));
     // runtime.merge_context();
-    println!(
-        "Context {:?}",
-        match runtime.current_context {
+    if debug {
+        println!("Context {:?}", match runtime.current_context {
             Some(_) => "Exists",
             _ => "Doesn't Exist",
-        }
-    );
-    for (address, contract) in &runtime.contracts {
-        println!("Address: {:x}", address);
-        println!("Storage: {:?}", contract.storage);
+        });
+        // for (address, contract) in &runtime.contracts {
+        //     println!("Address: {:x}", address);
+        //     println!("Storage: {:?}", contract.storage);
+        // }
     }
     // Debug the balances
     assert_eq!(runtime.state_root_hash(), test.post.hash);

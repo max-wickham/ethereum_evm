@@ -1,5 +1,6 @@
 use std::ops::Div;
 
+use precompile_costs::G_SHA256;
 use primitive_types::{ H256, U256 };
 use static_costs::{ G_COLD_ACCOUNT_ACCESS, G_NEW_ACCOUNT, G_SELF_DESTRUCT };
 
@@ -41,6 +42,11 @@ pub mod static_costs {
     pub const G_KECCAK256_WORD: u64 = 6;
     pub const G_COPY: u64 = 3;
     pub const G_BLOCK_HASH: u64 = 20;
+}
+
+pub mod precompile_costs {
+    pub const G_ECRECOVER: u64 = 3000;
+    pub const G_SHA256: u64 = 60;
 }
 
 pub enum DynamicCosts {
@@ -145,8 +151,7 @@ impl DynamicCosts {
             }
             DynamicCosts::Call { value, empty_account, target_is_cold, is_delegate, is_code } => {
                 // println!("empty_account: {}", empty_account);
-                // println!("target_is_cold {}", target_is_cold);
-
+                println!("target_is_cold {}", target_is_cold);
                 0 +
                     (if *target_is_cold {
                         static_costs::G_COLD_ACCOUNT_ACCESS
@@ -227,14 +232,11 @@ impl DynamicCosts {
             DynamicCosts::SelfDestruct { address_exists, is_cold, positive_balance } => {
                 G_SELF_DESTRUCT +
                     (if !*address_exists {
-                        if *positive_balance {
-                            G_NEW_ACCOUNT
-                        } else{
-                            0
-                        }
+                        if *positive_balance { G_NEW_ACCOUNT } else { 0 }
                     } else {
-                        if *is_cold { G_COLD_ACCOUNT_ACCESS } else { 0 }
-                    })
+                        0
+                    }) +
+                    (if *is_cold { G_COLD_ACCOUNT_ACCESS } else { 0 })
             }
             _ => 0,
         }
@@ -250,6 +252,22 @@ impl DynamicCosts {
             }
             DynamicCosts::SelfDestruct { .. } => { 24000 }
             _ => 0,
+        }
+    }
+}
+
+pub enum DynamicPreCompileCosts {
+    Sha256 {
+        data_word_size: usize,
+    },
+}
+
+impl DynamicPreCompileCosts {
+    pub fn cost(&self) -> u64 {
+        match self {
+            DynamicPreCompileCosts::Sha256 { data_word_size } => {
+                G_SHA256 + 12 * (*data_word_size as u64)
+            }
         }
     }
 }
